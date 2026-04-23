@@ -1,0 +1,6 @@
+node_modules
+audio_cache
+messages.db
+*.log
+.git
+.gitignore

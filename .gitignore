@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+pnpm-lock.yaml
+
+# env / secrets
+.env
+kick-bot.env
+kick-session-output.txt
+
+# runtime data
+audio_cache/
+messages.db
+*.db
+*.db-wal
+*.db-shm
+
+# logs
+*.log
+
+# test artifacts
+test-results/
+playwright-report/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Project specific exclusions (not part of TTS_Free)
+.agents/
+.atl/
+.claude/
+openspec/
+vendor/
+test/
+scripts/

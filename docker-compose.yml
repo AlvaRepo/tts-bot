@@ -1,0 +1,17 @@
+services:
+  tts-stream:
+    build: .
+    container_name: tts-stream
+    env_file:
+      - .env
+    environment:
+       PORT: 49152
+       WS_PORT: 49153
+       PUPPETEER_EXECUTABLE_PATH: /usr/local/bin/chromium-wrapper
+    ports:
+      - "49152:49152"
+      - "49153:49153"
+    volumes:
+      - ./audio_cache:/app/audio_cache
+      - ./messages.db:/app/messages.db
+    restart: unless-stopped

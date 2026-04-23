@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overlay</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+    body { display: flex; align-items: flex-end; justify-content: center; font-family: Arial, sans-serif; }
+    #box {
+      margin-bottom: 12px;
+      padding: 12px 18px;
+      border-radius: 14px;
+      background: rgba(0, 0, 0, 0.72);
+      color: #fff;
+      font-size: 32px;
+      line-height: 1.15;
+      max-width: 92vw;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      pointer-events: none;
+      text-align: center;
+      word-break: break-word;
+    }
+    #box.show { opacity: 1; transform: translateY(0); }
+    #hint {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+    }
+    #hint.show { opacity: 1; }
+    audio { display: none; }
+  </style>
+</head>
+<body>
+  <div id="hint">Click para habilitar audio</div>
+  <div id="box"></div>
+  <audio id="player"></audio>
+  <script>
+    const box = document.getElementById('box')
+    const hint = document.getElementById('hint')
+    const player = document.getElementById('player')
+    let socket = null
+    let reconnectTimer = null
+    let currentId = null
+    let endFallbackTimer = null
+    let pendingPlayRetry = null
+
+    function show(text) {
+      box.textContent = text || ''
+      box.classList.add('show')
+    }
+
+    function hide() {
+      box.classList.remove('show')
+      hint.classList.remove('show')
+      currentId = null
+      clearTimeout(endFallbackTimer)
+      endFallbackTimer = null
+      clearTimeout(pendingPlayRetry)
+      pendingPlayRetry = null
+      player.pause()
+      player.removeAttribute('src')
+      player.load()
+    }
+
+    function clearEndFallback() {
+      if (endFallbackTimer) clearTimeout(endFallbackTimer)
+      endFallbackTimer = null
+    }
+
+    function armEndFallback(durationSeconds = null) {
+      clearEndFallback()
+      const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0
+        ? Math.ceil(durationSeconds * 1000) + 500
+        : (Number.isFinite(player.duration) && player.duration > 0 ? Math.ceil(player.duration * 1000) + 500 : 15000)
+      endFallbackTimer = setTimeout(() => {
+        if (socket && socket.readyState === WebSocket.OPEN && currentId) {
+          socket.send(JSON.stringify({ type: 'audio:ended', id: currentId }))
+        }
+      }, durationMs)
+    }
+
+    function finishCurrent() {
+      clearEndFallback()
+      clearTimeout(pendingPlayRetry)
+      pendingPlayRetry = null
+      if (socket && socket.readyState === WebSocket.OPEN && currentId) {
+        socket.send(JSON.stringify({ type: 'audio:ended', id: currentId }))
+      }
+    }
+
+    function attemptPlay() {
+      clearTimeout(pendingPlayRetry)
+      pendingPlayRetry = null
+      void player.play().then(() => {
+        hint.classList.remove('show')
+      }).catch(error => {
+        console.warn('audio play failed', error)
+        hint.classList.add('show')
+        pendingPlayRetry = setTimeout(() => {
+          finishCurrent()
+        }, 1200)
+      })
+    }
+
+    function connect() {
+      socket = new WebSocket('ws://localhost:49153?client=overlay')
+
+      socket.addEventListener('open', () => {
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer)
+          reconnectTimer = null
+        }
+      })
+
+      socket.addEventListener('message', event => {
+        const data = JSON.parse(event.data)
+        if (data.type === 'message:start') {
+          currentId = data.id
+          show(data.text)
+          player.preload = 'auto'
+          player.src = data.audioUrl
+          player.load()
+          hint.classList.remove('show')
+          player.addEventListener('loadedmetadata', () => armEndFallback(player.duration), { once: true })
+          armEndFallback()
+          attemptPlay()
+        }
+        if (data.type === 'message:done' || data.type === 'queue:stopped') hide()
+        if (data.type === 'queue:paused') {
+          clearEndFallback()
+          player.pause()
+        }
+        if (data.type === 'queue:resumed') {
+          attemptPlay()
+          armEndFallback()
+        }
+      })
+
+      socket.addEventListener('close', () => {
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        reconnectTimer = setTimeout(() => location.reload(), 3000)
+      })
+
+      socket.addEventListener('error', () => {
+        try { socket.close() } catch {}
+      })
+    }
+
+    player.addEventListener('ended', () => {
+      finishCurrent()
+    })
+
+    player.addEventListener('error', () => {
+      finishCurrent()
+    })
+
+    document.addEventListener('pointerdown', () => {
+      if (currentId) attemptPlay()
+    })
+
+    connect()
+  </script>
+</body>
+</html>

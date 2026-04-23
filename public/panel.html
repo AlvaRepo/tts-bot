@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #111; color: #eee; }
+    h1, h2 { margin: 0 0 12px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: #171717; border: 1px solid #2a2a2a; border-radius: 14px; padding: 14px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+    input, button, select { padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #1c1c1c; color: #eee; }
+    textarea { padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #1c1c1c; color: #eee; width: 100%; min-height: 72px; resize: vertical; }
+    button { cursor: pointer; }
+    button:hover { background: #2a2a2a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border-bottom: 1px solid #333; padding: 8px; text-align: left; font-size: 14px; }
+    th { position: sticky; top: 0; background: #111; }
+    .pending { margin: 10px 0 18px; font-weight: bold; }
+    .muted { color: #9aa0a6; font-size: 13px; }
+    .statusline { display: flex; gap: 12px; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 240px; }
+    .field small { color: #9aa0a6; }
+    .DONE { color: #6ee56e; }
+    .FAILED { color: #ff6b6b; }
+    .PLAYING { color: #f0d25c; }
+    .PAUSED { color: #ff9f43; }
+    .QUEUED, .SYNTHESIZING { color: #8aa6c1; }
+    .SKIPPED { color: #9aa0a6; }
+    .PENDING { color: #bbb; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .actions button { padding: 6px 9px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>TTS Panel</h1>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Enviar / Controlar</h2>
+      <div class="row">
+        <input id="text" placeholder="Mensaje" maxlength="300" size="40">
+        <input id="donor" placeholder="Donor name (opcional)">
+        <input id="amount" placeholder="Amount (opcional)" inputmode="decimal">
+        <button id="send">Enviar</button>
+      </div>
+      <div class="row">
+        <button data-action="pause">Pausar</button>
+        <button data-action="resume">Reanudar</button>
+        <button data-action="stop">Detener</button>
+        <button data-action="skip">Saltar actual</button>
+      </div>
+      <div class="row" style="align-items:center;">
+        <label for="audioProfile">Audio profile</label>
+        <select id="audioProfile">
+          <option value="auto">auto</option>
+          <option value="high">high</option>
+          <option value="lite">lite</option>
+        </select>
+        <button id="saveAudioProfile">Guardar</button>
+        <span id="audioProfileStatus"></span>
+      </div>
+      <div class="pending">Pendientes: <span id="pending">0</span></div>
+      <div class="statusline muted" id="queueState"></div>
+      <div class="muted" id="currentMessage"></div>
+    </section>
+
+    <section class="card">
+      <h2>Filtros / Moderación</h2>
+      <div class="row">
+        <label><input type="checkbox" id="filterEnabled"> Activar filtro</label>
+      </div>
+      <textarea id="filterBlacklist" placeholder="Palabras bloqueadas, separadas por coma"></textarea>
+      <div class="row">
+        <span id="filterStatus" class="muted"></span>
+      </div>
+      <p class="muted">Los mensajes filtrados quedan como <strong>SKIPPED</strong> con motivo visible en el historial.</p>
+    </section>
+
+    <section class="card">
+      <h2>Voz TTS</h2>
+      <div class="row">
+        <div class="field">
+          <label for="ttsVoice">Voz</label>
+          <select id="ttsVoice"></select>
+          <small>Se guarda al instante.</small>
+        </div>
+        <div class="field">
+          <label for="customVoice">Custom voice</label>
+          <input id="customVoice" placeholder="es-AR-TomasNeural">
+          <small>Usá esto si querés una voz no listada.</small>
+        </div>
+      </div>
+      <div class="row"><span id="voiceStatus" class="muted"></span></div>
+    </section>
+
+    <section class="card">
+      <h2>Preset emocional</h2>
+      <div class="row">
+        <div class="field">
+          <label for="ttsPreset">Estado / energía</label>
+          <select id="ttsPreset"></select>
+          <small>Se aplica al instante y modula rate, volume y pitch.</small>
+        </div>
+      </div>
+      <div class="row"><span id="presetStatus" class="muted"></span></div>
+    </section>
+
+    <section class="card">
+      <h2>Bot de Kick</h2>
+      <div class="row">
+        <label><input type="checkbox" id="botEnabled"> Activar bot</label>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="botChannel">Canal</label>
+          <input id="botChannel" placeholder="nombre_del_canal">
+        </div>
+        <div class="field">
+          <label for="botPrefix">Prefijo</label>
+          <input id="botPrefix" placeholder="!" maxlength="3">
+        </div>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="botAllowTtsFromChat"> Permitir !tts desde chat</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="botAllowCommandsFromMods"> Permitir comandos a mods</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="botAllowCommandsFromVip"> Permitir comandos de mods a VIPs</label>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="botViewerCommands">Whitelist viewers</label>
+          <textarea id="botViewerCommands" placeholder="help,status,tts"></textarea>
+        </div>
+        <div class="field">
+          <label for="botModeratorCommands">Whitelist mods</label>
+          <textarea id="botModeratorCommands" placeholder="help,status,tts,skip,replay,voice,preset,cancel,delete,restore"></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="botStreamerCommands">Whitelist streamer</label>
+          <textarea id="botStreamerCommands" placeholder="help,status,tts,skip,replay,voice,preset,cancel,delete,restore"></textarea>
+        </div>
+      </div>
+      <div class="row"><span id="botStatus" class="muted"></span></div>
+    </section>
+
+    <section class="card">
+      <h2>Comandos del bot</h2>
+      <div class="muted">
+        <p><strong>!tts &lt;texto&gt;</strong> → manda texto a TTS.</p>
+        <p><strong>!status</strong> → muestra estado de la cola/bot.</p>
+        <p><strong>!skip</strong> → salta el mensaje actual.</p>
+        <p><strong>!replay last | !replay &lt;id&gt;</strong> → reencola un mensaje.</p>
+        <p><strong>!cancel &lt;id&gt;</strong> → marca SKIPPED el mensaje.</p>
+        <p><strong>!delete &lt;id&gt;</strong> → borra el mensaje del historial.</p>
+        <p><strong>!restore &lt;id&gt;</strong> → vuelve a encolar un SKIPPED.</p>
+        <p><strong>!help</strong> → habla solo los comandos disponibles para viewers.</p>
+        <p><strong>!voice &lt;alias|voz&gt;</strong> / <strong>!ttsVoice &lt;alias|voz&gt;</strong> / <strong>!ttsVoiceAlvaro</strong> → cambia la voz del TTS.</p>
+        <p><strong>!preset &lt;nombre&gt;</strong> → cambia el preset emocional.</p>
+      </div>
+    </section>
+
+    <section class="card" style="grid-column: 1 / -1;">
+      <h2>Historial / Acciones</h2>
+      <div class="row">
+        <input id="search" placeholder="Buscar texto, donante o ID">
+        <select id="statusFilter">
+          <option value="all">all</option>
+          <option value="PENDING">PENDING</option>
+          <option value="QUEUED">QUEUED</option>
+          <option value="SYNTHESIZING">SYNTHESIZING</option>
+          <option value="READY">READY</option>
+          <option value="PLAYING">PLAYING</option>
+          <option value="PAUSED">PAUSED</option>
+          <option value="DONE">DONE</option>
+          <option value="FAILED">FAILED</option>
+          <option value="SKIPPED">SKIPPED</option>
+        </select>
+        <select id="sourceFilter">
+          <option value="all">all sources</option>
+          <option value="manual">manual</option>
+          <option value="webhook">webhook</option>
+        </select>
+        <button id="applyFilters">Filtrar</button>
+        <button id="refreshNow">Actualizar</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Text</th>
+            <th>Source</th>
+            <th>Status</th>
+            <th>Reason</th>
+            <th>Retries</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="history"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    const text = document.getElementById('text')
+    const donor = document.getElementById('donor')
+    const amount = document.getElementById('amount')
+    const pending = document.getElementById('pending')
+    const history = document.getElementById('history')
+    const audioProfile = document.getElementById('audioProfile')
+    const audioProfileStatus = document.getElementById('audioProfileStatus')
+    const queueState = document.getElementById('queueState')
+    const currentMessage = document.getElementById('currentMessage')
+    const filterEnabled = document.getElementById('filterEnabled')
+    const filterBlacklist = document.getElementById('filterBlacklist')
+    const filterStatus = document.getElementById('filterStatus')
+    const ttsVoice = document.getElementById('ttsVoice')
+    const customVoice = document.getElementById('customVoice')
+    const voiceStatus = document.getElementById('voiceStatus')
+    const ttsPreset = document.getElementById('ttsPreset')
+    const presetStatus = document.getElementById('presetStatus')
+    const botEnabled = document.getElementById('botEnabled')
+    const botChannel = document.getElementById('botChannel')
+    const botPrefix = document.getElementById('botPrefix')
+    const botAllowTtsFromChat = document.getElementById('botAllowTtsFromChat')
+    const botAllowCommandsFromMods = document.getElementById('botAllowCommandsFromMods')
+    const botAllowCommandsFromVip = document.getElementById('botAllowCommandsFromVip')
+    const botViewerCommands = document.getElementById('botViewerCommands')
+    const botModeratorCommands = document.getElementById('botModeratorCommands')
+    const botStreamerCommands = document.getElementById('botStreamerCommands')
+    const botStatus = document.getElementById('botStatus')
+    const search = document.getElementById('search')
+    const statusFilter = document.getElementById('statusFilter')
+    const sourceFilter = document.getElementById('sourceFilter')
+
+    let autoRefreshTimer = null
+    let filtersTimer = null
+    let voiceTimer = null
+    let presetTimer = null
+    let botTimer = null
+
+    async function postJSON(url, payload) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      return res.json()
+    }
+
+    async function fetchJSON(url) {
+      return fetch(url).then(r => r.json())
+    }
+
+    function fmtTime(ts) {
+      const d = new Date(ts)
+      return [d.getHours(), d.getMinutes(), d.getSeconds()].map(v => String(v).padStart(2, '0')).join(':')
+    }
+
+    function render(items) {
+      history.innerHTML = items.map(item => {
+        const shortText = (item.text || '').slice(0, 40)
+        const reason = item.error_msg || ''
+        return `<tr>
+          <td>${item.id.slice(0, 8)}</td>
+          <td title="${escapeHtml(item.text || '')}">${escapeHtml(shortText)}${(item.text || '').length > 40 ? '…' : ''}</td>
+          <td>${escapeHtml(item.source || '')}</td>
+          <td class="${item.status || ''}">${escapeHtml(item.status || '')}</td>
+          <td title="${escapeHtml(reason)}">${escapeHtml(reason ? reason.slice(0, 28) : '')}</td>
+          <td>${item.retries ?? 0}</td>
+          <td>${fmtTime(item.created_at)}</td>
+          <td>
+            <div class="actions">
+              <button data-action="replay" data-id="${item.id}">Replay</button>
+              ${item.status === 'SKIPPED' ? `<button data-action="restore" data-id="${item.id}">Restore</button>` : ''}
+              ${['PENDING','QUEUED','SYNTHESIZING','READY','PLAYING','PAUSED'].includes(item.status) ? `<button data-action="cancel" data-id="${item.id}">Cancel</button>` : ''}
+              <button data-action="delete" data-id="${item.id}">Delete</button>
+            </div>
+          </td>
+        </tr>`
+      }).join('')
+    }
+
+    async function refreshHistory() {
+      const params = new URLSearchParams()
+      if (search.value.trim()) params.set('q', search.value.trim())
+      if (statusFilter.value !== 'all') params.set('status', statusFilter.value)
+      if (sourceFilter.value !== 'all') params.set('source', sourceFilter.value)
+      const items = await fetchJSON(`/api/history?${params.toString()}`)
+      render(items)
+    }
+
+    async function refreshQueue() {
+      const data = await fetchJSON('/api/queue')
+      pending.textContent = String(data.pendingCount ?? 0)
+      queueState.textContent = `Estado: ${data.state || 'unknown'}`
+      currentMessage.textContent = data.current ? `Actual: ${data.current.id.slice(0, 8)} · ${data.current.text}` : 'Actual: ninguno'
+    }
+
+    async function refreshAudioProfile() {
+      const data = await fetchJSON('/api/audio-profile')
+      audioProfile.value = data.preference || 'auto'
+      audioProfileStatus.textContent = `Activo: ${data.effective || 'auto'} · aplica tras reiniciar`
+    }
+
+    async function refreshFilters() {
+      const data = await fetchJSON('/api/filters')
+      filterEnabled.checked = Boolean(data.enabled)
+      filterBlacklist.value = Array.isArray(data.blacklist) ? data.blacklist.join(', ') : ''
+      filterStatus.textContent = `Filtro ${data.enabled ? 'activo' : 'inactivo'} · ${Array.isArray(data.blacklist) ? data.blacklist.length : 0} palabras`
+    }
+
+    async function refreshVoice() {
+      const data = await fetchJSON('/api/tts-voice')
+      const voices = Array.isArray(data.available) ? data.available : []
+      ttsVoice.innerHTML = voices.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('') + '<option value="__custom__">Custom</option>'
+      if (voices.includes(data.voice)) {
+        ttsVoice.value = data.voice
+        customVoice.value = data.voice
+      } else {
+        ttsVoice.value = '__custom__'
+        customVoice.value = data.voice || ''
+      }
+      voiceStatus.textContent = `Voz activa: ${data.voice || 'default'}`
+    }
+
+    async function refreshPreset() {
+      const data = await fetchJSON('/api/tts-preset')
+      const presets = data.available || {}
+      ttsPreset.innerHTML = Object.entries(presets).map(([key, meta]) => `<option value="${escapeHtml(key)}">${escapeHtml(meta.label || key)}</option>`).join('')
+      ttsPreset.value = data.preset || 'neutral'
+      const meta = presets[data.preset] || presets.neutral || {}
+      presetStatus.textContent = `${meta.label || data.preset || 'neutral'} · ${meta.description || ''}`
+    }
+
+    async function refreshBot() {
+      const data = await fetchJSON('/api/bot/config')
+      botEnabled.checked = Boolean(data.enabled)
+      botChannel.value = data.channel || ''
+      botPrefix.value = data.prefix || '!'
+      botAllowTtsFromChat.checked = data.allowTtsFromChat !== false
+      botAllowCommandsFromMods.checked = data.allowCommandsFromMods !== false
+      botAllowCommandsFromVip.checked = data.allowCommandsFromVip === true
+      botViewerCommands.value = Array.isArray(data.viewerCommands) ? data.viewerCommands.join(',') : ''
+      botModeratorCommands.value = Array.isArray(data.moderatorCommands) ? data.moderatorCommands.join(',') : ''
+      botStreamerCommands.value = Array.isArray(data.streamerCommands) ? data.streamerCommands.join(',') : ''
+
+      const status = await fetchJSON('/api/bot/status')
+      const lastSeen = status.lastSeenAt ? new Date(status.lastSeenAt).toLocaleTimeString() : 'nunca'
+      botStatus.textContent = `${status.connected ? 'online' : 'offline'} · canal: ${status.lastChannel || data.channel || '-'} · última señal: ${lastSeen}`
+    }
+
+    async function saveAudioProfile() {
+      const data = await postJSON('/api/audio-profile', { preference: audioProfile.value })
+      audioProfileStatus.textContent = `Guardado: ${data.preference} · activo tras reiniciar`
+    }
+
+    async function saveVoice() {
+      const voice = ttsVoice.value === '__custom__' ? customVoice.value.trim() : ttsVoice.value
+      const data = await postJSON('/api/tts-voice', { voice })
+      voiceStatus.textContent = `Voz guardada: ${data.voice}`
+      await refreshHistory()
+    }
+
+    async function savePreset() {
+      const data = await postJSON('/api/tts-preset', { preset: ttsPreset.value })
+      const meta = data.available?.[data.preset] || {}
+      presetStatus.textContent = `${meta.label || data.preset} · ${meta.description || ''}`
+      await refreshHistory()
+    }
+
+    async function saveBotConfig() {
+      const data = await postJSON('/api/bot/config', {
+        enabled: botEnabled.checked,
+        channel: botChannel.value.trim(),
+        prefix: botPrefix.value.trim() || '!',
+        allowTtsFromChat: botAllowTtsFromChat.checked,
+        allowCommandsFromMods: botAllowCommandsFromMods.checked,
+        allowCommandsFromVip: botAllowCommandsFromVip.checked,
+        viewerCommands: botViewerCommands.value.split(',').map(v => v.trim()).filter(Boolean),
+        moderatorCommands: botModeratorCommands.value.split(',').map(v => v.trim()).filter(Boolean),
+        streamerCommands: botStreamerCommands.value.split(',').map(v => v.trim()).filter(Boolean)
+      })
+      botStatus.textContent = `${data.enabled ? 'online ready' : 'disabled'} · canal: ${data.channel || '-'} · prefijo: ${data.prefix}`
+    }
+
+    async function saveFilters() {
+      const blacklist = filterBlacklist.value.split(',').map(item => item.trim()).filter(Boolean)
+      const data = await postJSON('/api/filters', { enabled: filterEnabled.checked, blacklist })
+      filterStatus.textContent = `Filtro ${data.enabled ? 'activo' : 'inactivo'} · ${data.blacklist.length} palabras`
+    }
+
+    async function runAction(action, id) {
+      if (action === 'delete' && !confirm('¿Borrar este mensaje?')) return
+      if (action === 'cancel') {
+        const reason = prompt('Motivo del cancelado', 'CANCELLED BY STREAMER') || 'CANCELLED BY STREAMER'
+        await postJSON(`/api/message/${id}/cancel`, { reason })
+        return
+      }
+      if (action === 'delete') {
+        await fetch(`/api/message/${id}`, { method: 'DELETE' })
+        return
+      }
+      await fetch(`/api/message/${id}/${action}`, { method: 'POST' })
+    }
+
+    document.getElementById('send').addEventListener('click', async () => {
+      const body = {
+        text: text.value,
+        source: 'manual',
+        donor_name: donor.value.trim() || null,
+        amount: amount.value.trim() ? Number(amount.value) : null
+      }
+      await postJSON('/api/message', body)
+      text.value = ''
+      donor.value = ''
+      amount.value = ''
+      await refreshQueue()
+      refreshHistory()
+    })
+
+    document.querySelectorAll('button[data-action]').forEach(button => {
+      button.addEventListener('click', async () => {
+        if (button.dataset.action === 'replay' || button.dataset.action === 'restore' || button.dataset.action === 'cancel' || button.dataset.action === 'delete') return
+        await postJSON(`/api/control/${button.dataset.action}`, {})
+        await refreshQueue()
+      })
+    })
+
+    history.addEventListener('click', async event => {
+      const button = event.target.closest('button[data-action][data-id]')
+      if (!button) return
+      await runAction(button.dataset.action, button.dataset.id)
+      await refreshQueue()
+      await refreshHistory()
+    })
+
+    document.getElementById('saveAudioProfile').addEventListener('click', saveAudioProfile)
+    document.getElementById('applyFilters').addEventListener('click', refreshHistory)
+    document.getElementById('refreshNow').addEventListener('click', async () => {
+      await refreshQueue()
+      await refreshHistory()
+      await refreshAudioProfile()
+      await refreshFilters()
+      await refreshVoice()
+    })
+
+    audioProfile.addEventListener('change', saveAudioProfile)
+    filterEnabled.addEventListener('change', () => {
+      clearTimeout(filtersTimer)
+      filtersTimer = setTimeout(saveFilters, 150)
+    })
+    filterBlacklist.addEventListener('input', () => {
+      clearTimeout(filtersTimer)
+      filtersTimer = setTimeout(saveFilters, 350)
+    })
+    ttsVoice.addEventListener('change', () => {
+      if (ttsVoice.value === '__custom__') {
+        customVoice.focus()
+        return
+      }
+      clearTimeout(voiceTimer)
+      voiceTimer = setTimeout(saveVoice, 100)
+    })
+    customVoice.addEventListener('input', () => {
+      clearTimeout(voiceTimer)
+      if (ttsVoice.value !== '__custom__') ttsVoice.value = '__custom__'
+      voiceTimer = setTimeout(saveVoice, 350)
+    })
+    ttsPreset.addEventListener('change', () => {
+      clearTimeout(presetTimer)
+      presetTimer = setTimeout(savePreset, 120)
+    })
+
+    ;[botEnabled, botChannel, botPrefix, botAllowTtsFromChat, botAllowCommandsFromMods, botAllowCommandsFromVip, botViewerCommands, botModeratorCommands, botStreamerCommands].forEach(el => {
+      el.addEventListener('change', () => {
+        clearTimeout(botTimer)
+        botTimer = setTimeout(saveBotConfig, 150)
+      })
+      if ((el.tagName === 'INPUT' && el.type === 'text') || el.tagName === 'TEXTAREA') {
+        el.addEventListener('input', () => {
+          clearTimeout(botTimer)
+          botTimer = setTimeout(saveBotConfig, 300)
+        })
+      }
+    })
+
+    const ws = new WebSocket('ws://localhost:49153?client=panel')
+    ws.addEventListener('message', event => {
+      const data = JSON.parse(event.data)
+      if (data.type === 'queue:updated') refreshQueue()
+      if (data.type === 'message:done' || data.type === 'message:failed' || data.type === 'queue:stopped') {
+        refreshHistory()
+        refreshQueue()
+      }
+    })
+
+    autoRefreshTimer = setInterval(async () => {
+      await refreshHistory()
+      await refreshQueue()
+    }, 2000)
+    refreshHistory()
+    refreshAudioProfile()
+    refreshQueue()
+    refreshFilters()
+    refreshVoice()
+    refreshPreset()
+    refreshBot()
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+    }
+  </script>
+</body>
+</html>
