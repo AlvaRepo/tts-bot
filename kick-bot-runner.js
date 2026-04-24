@@ -1,4 +1,4 @@
-// Kick bot usando WebSocket nativo
+// Kick bot usando WebSocket nativo - no requiere API externa
 
 function toBool(value) {
   if (typeof value === 'boolean') return value
@@ -59,25 +59,15 @@ export function createKickBotRunner({
     }
 
     if (!channel || !chatroomId) {
-      updateBotRuntime({ connected: false, lastError: 'missing channel or chatroomId' })
+      updateBotRuntime({ connected: false, lastError: 'missing KICK_BOT_CHANNEL or KICK_CHATROOM_ID' })
       return { started: false, reason: 'missing-env' }
     }
 
     try {
       ws = new WebSocket(WEBSOCKET_URL)
 
-      // Guardar el handler original para después
-      let resolved = false
       ws.onopen = () => {
-        // SUSCRIBIRSE AL CANAL DE CHAT
-        const subMsg = buildSubscribeMessage(chatroomId)
-        console.log('[kick-bot] subscribing:', subMsg)
-        ws.send(subMsg)
-        
-        resolved = true
-        started = true
-        updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
-        console.log('[kick-bot] connected to chatroom:', chatroomId)
+        ws.send(buildSubscribeMessage(chatroomId))
       }
 
       ws.onmessage = async (event) => {
@@ -87,13 +77,7 @@ export function createKickBotRunner({
         const message = parsed.data
         const content = (message.content || '').trim()
         const username = message.sender?.username || message.user?.username || 'unknown'
-        
-        // Debug: mostrar TODOS los datos del usuario
-        console.log('[kick-bot] raw sender:', JSON.stringify(message.sender).slice(0, 200))
-        
         const role = inferRole(message)
-
-        console.log('[kick-bot] msg:', content.slice(0, 50), '@', username, 'role:', role)
 
         updateBotRuntime({
           connected: true,
@@ -119,50 +103,42 @@ export function createKickBotRunner({
       }
 
       ws.onerror = (error) => {
-        console.log('[kick-bot] error:', error)
+        updateBotRuntime({ connected: false, lastError: String(error) })
       }
 
       ws.onclose = () => {
-        console.log('[kick-bot] disconnected')
+        updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
         started = false
-        updateBotRuntime({ connected: false })
       }
 
-      // Esperar conexión (timeout 10s)
+      // Esperar a que conecte (timeout 10s)
       await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          if (!resolved) reject(new Error('timeout'))
-        }, 10000)
+        const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
+        
+        // Sobrescribimos onopen para resolver la promesa cuando conecte
+        const originalOnOpen = ws.onopen
+        ws.onopen = () => {
+          clearTimeout(timeout)
+          if (typeof originalOnOpen === 'function') {
+            originalOnOpen()
+          }
+          started = true
+          updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
+          resolve()
+        }
       })
 
       return { started: true, channel, chatroomId }
     } catch (error) {
       updateBotRuntime({ connected: false, lastError: error.message })
-      console.log('[kick-bot] failed:', error.message)
-      return { started: false, reason: 'error' }
+      return { started: false, reason: 'connection-failed' }
     }
   }
 
-function inferRole(message) {
-    const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
-    if (senderUsername === 'alvaftw') return 'superuser'
-    
-    const badges = message.sender?.identity?.badges || []
-    const badgeTypes = badges.map(badge => badge.type?.toLowerCase() || badge.text?.toLowerCase() || '').filter(Boolean)
-    
-    // Priority: VIP > moderator > subscriber > viewer
-    if (badgeTypes.includes('vip')) return 'vip'
-    if (badgeTypes.includes('moderator') || badgeTypes.includes('mod')) return 'moderator'
-    if (badgeTypes.includes('subscriber')) return 'subscriber'
-    
-    return 'viewer'
-}
-
-    return 'viewer'
-  }
-
   async function stop() {
-    ws?.close()
+    try {
+      ws?.close()
+    } catch {}
     started = false
     ws = null
     updateBotRuntime({ connected: false })
@@ -170,7 +146,25 @@ function inferRole(message) {
   }
 
   async function sendChatMessage(text) {
-    return { ok: false, error: 'not supported' }
+    // WebSocket nativo no puede enviar mensajes (solo recibe)
+    return { ok: false, error: 'sendMessage not supported (read-only)' }
+  }
+
+  function inferRole(message) {
+    const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
+    if (senderUsername === 'alvaftw') return 'superuser'
+    
+    const badges = message.sender?.identity?.badges || []
+    const badgeTypes = badges.map(badge => 
+      badge.type?.toLowerCase() || badge.text?.toLowerCase() || ''
+    ).filter(Boolean)
+    
+    // Priority: VIP > moderator > subscriber > viewer
+    if (badgeTypes.includes('vip')) return 'vip'
+    if (badgeTypes.includes('moderator') || badgeTypes.includes('mod')) return 'moderator'
+    if (badgeTypes.includes('subscriber')) return 'subscriber'
+    
+    return 'viewer'
   }
 
   return {
