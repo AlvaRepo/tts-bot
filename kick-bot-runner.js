@@ -72,13 +72,16 @@ try {
 
         if (parsed.type === 'ChatMessage') {
           const message = parsed.data
-          const content = message.content || ''
+          let content = message.content || ''
           const username = message.sender?.username || message.user?.username || 'unknown'
           const role = inferRole(message)
-
-          // Debug: ver rol del usuario (solo si contiene !tts)
-          if (content.startsWith('!tts')) {
-            logger.log(`[kick-bot] !tts from @${username} (role: ${role})`)
+          
+          // Limpiar contenido - trim y verificar que sea comando
+          content = content.trim()
+          
+          // Debug: mostrar primeros chars de cada mensaje con !
+          if (content.startsWith('!')) {
+            logger.log(`[kick-bot] cmd: "${content.slice(0, 30)}" @${username} role:${role}`)
           }
 
           updateBotRuntime({
@@ -101,7 +104,7 @@ try {
             })
           } catch (error) {
             updateBotRuntime({ lastError: error.message })
-            logger.error?.('[kick-bot] chat handler error', error)
+            logger.error?.('[kick-bot] error', error.message)
           }
         }
       }
