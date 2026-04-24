@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'fs'
-import { writeFile, rename, unlink } from 'fs/promises'
+import { writeFile, rename } from 'fs/promises'
 import { join } from 'path'
 import { getTtsVoicePreference, getTtsPresetPreference, TTS_EMOTION_PRESETS } from './supabase-db.js'
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
@@ -32,28 +32,12 @@ function buildSSML(voice, text, preset) {
 }
 
 /**
- * Escribe un archivo MP3 mock para testing
- */
-async function writeMockMp3(outPath, text) {
-  const header = Buffer.from(`MOCK-TTS:${text}\n`)
-  const filler = Buffer.alloc(Math.max(1024, 2048 - header.length), 0)
-  await writeFile(outPath, Buffer.concat([header, filler]))
-}
-
-/**
  * Sintetiza texto y devuelve la ruta absoluta del archivo .mp3.
  * Lanza Error si falla.
  */
 export async function synthesize(id, text) {
   const outPath = join(CACHE_DIR, `${id}.mp3`)
   
-  // Si está en modo MOCK manual, usamos mock
-  if (process.env.TTS_MOCK === '1') {
-    console.log('🤖 Modo MOCK manual activado')
-    await writeMockMp3(outPath, text)
-    return outPath
-  }
-
   const voice = getTtsVoicePreference?.() ?? VOICE
   const presetKey = getTtsPresetPreference?.() ?? 'neutral'
   const preset = TTS_EMOTION_PRESETS[presetKey] ?? TTS_EMOTION_PRESETS.neutral
