@@ -150,22 +150,55 @@ export function createKickBotRunner({
     return { ok: false, error: 'sendMessage not supported (read-only)' }
   }
 
-  function inferRole(message) {
-    const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
-    if (senderUsername === 'alvaftw') return 'superuser'
-    
-    const badges = message.sender?.identity?.badges || []
-    const badgeTypes = badges.map(badge => 
-      badge.type?.toLowerCase() || badge.text?.toLowerCase() || ''
-    ).filter(Boolean)
-    
-    // Priority: VIP > moderator > subscriber > viewer
-    if (badgeTypes.includes('vip')) return 'vip'
-    if (badgeTypes.includes('moderator') || badgeTypes.includes('mod')) return 'moderator'
-    if (badgeTypes.includes('subscriber')) return 'subscriber'
-    
-    return 'viewer'
+function inferRole(message) {
+  // Check for superuser/streamer first (by username)
+  const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
+  if (senderUsername === 'alvaftw') return 'superuser'
+  
+  // Try to extract badges from multiple possible locations
+  let badges = []
+  
+  // Common Kick badge locations
+  if (message.sender?.identity?.badges) {
+    badges = message.sender?.identity?.badges
+  } else if (message.sender?.badges) {
+    badges = message.sender?.badges
+  } else if (message.user?.identity?.badges) {
+    badges = message.user?.identity?.badges
+  } else if (message.user?.badges) {
+    badges = message.user?.badges
+  } else if (message.badges) {
+    badges = message.badges
   }
+  
+  // Extract badge identifiers with multiple fallback strategies
+  const badgeTypes = badges.map(badge => {
+    // Strategy 1: Check for type property
+    if (badge?.type) return String(badge.type).toLowerCase()
+    // Strategy 2: Check for text property  
+    if (badge?.text) return String(badge.text).toLowerCase()
+    // Strategy 3: Check for label property
+    if (badge?.label) return String(badge.label).toLowerCase()
+    // Strategy 4: Check if badge is already a string
+    if (typeof badge === 'string') return badge.toLowerCase()
+    // Strategy 5: Try to get any string property
+    if (badge && typeof badge === 'object') {
+      for (const key in badge) {
+        if (typeof badge[key] === 'string' && badge[key].trim().length > 0) {
+          return badge[key].toLowerCase()
+        }
+      }
+    }
+    return ''
+  }).filter(Boolean)
+  
+  // Priority: VIP > moderator > subscriber > viewer
+  if (badgeTypes.some(b => b.includes('vip'))) return 'vip'
+  if (badgeTypes.some(b => b.includes('moderator') || b.includes('mod'))) return 'moderator'
+  if (badgeTypes.some(b => b.includes('subscriber'))) return 'subscriber'
+  
+  return 'viewer'
+}
 
   return {
     start,
