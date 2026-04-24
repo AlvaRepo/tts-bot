@@ -110,21 +110,7 @@ broadcast.clientCount = () => {
   return count
 }
 
-wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'http://localhost')
-  ws.clientType = url.searchParams.get('client') ?? 'unknown'
-
-  ws.on('message', raw => {
-    try {
-      const event = JSON.parse(raw.toString())
-      if (event.type === 'audio:ended' && event.id) queue.audioEnded(event.id)
-    } catch {
-      // ignore malformed messages
-    }
-  })
-})
-
-queue.init(broadcast)
+// wss.on('connection', ...) se movió al callback de app.listen()
 
 const app = express()
 app.use(express.json())
@@ -373,6 +359,22 @@ const server = app.listen(PORT, () => {
   // WebSocket en el mismo servidor HTTP
   wss = new WebSocketServer({ server })
   console.log('✅ WebSocket conectado al servidor HTTP en puerto', PORT)
+
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url, 'http://localhost')
+    ws.clientType = url.searchParams.get('client') ?? 'unknown'
+
+    ws.on('message', raw => {
+      try {
+        const event = JSON.parse(raw.toString())
+        if (event.type === 'audio:ended' && event.id) queue.audioEnded(event.id)
+      } catch {
+        // ignore malformed messages
+      }
+    })
+  })
+
+  queue.init(broadcast)
 })
 
 void kickBotRunner.start().catch(error => {
