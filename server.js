@@ -197,29 +197,38 @@ app.delete('/api/message/:id', (req, res) => {
   res.json({ ok: true })
 })
 
-app.get('/api/history', (req, res) => {
-  const limit = Math.min(Math.max(parseInt(req.query.limit ?? '50', 10) || 50, 1), 200)
-  const rows = getHistory(limit, {
-    query: typeof req.query.q === 'string' ? req.query.q.trim() : '',
-    status: typeof req.query.status === 'string' ? req.query.status : 'all',
-    source: typeof req.query.source === 'string' ? req.query.source : 'all'
-  })
+app.get('/api/history', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit ?? '50', 10) || 50, 1), 200)
+    const rows = await getHistory(limit, {
+      query: typeof req.query.q === 'string' ? req.query.q.trim() : '',
+      status: typeof req.query.status === 'string' ? req.query.status : 'all',
+      source: typeof req.query.source === 'string' ? req.query.source : 'all'
+    })
 
-  res.json(rows.map(({ id, text, source, donor_name, amount, status, retries, created_at, error_msg }) => ({
-    id,
-    text,
-    source,
-    donor_name,
-    amount,
-    status,
-    retries,
-    created_at,
-    error_msg
-  })))
+    res.json(rows.map(({ id, text, source, donor_name, amount, status, retries, created_at, error_msg }) => ({
+      id,
+      text,
+      source,
+      donor_name,
+      amount,
+      status,
+      retries,
+      created_at,
+      error_msg
+    })))
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
-app.get('/api/filters', (_req, res) => {
-  res.json(getMessageFilterConfig())
+app.get('/api/filters', async (_req, res) => {
+  try {
+    const config = await getMessageFilterConfig()
+    res.json(config)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.post('/api/filters', (req, res) => {
@@ -230,8 +239,13 @@ app.post('/api/filters', (req, res) => {
   res.json({ ok: true, ...config })
 })
 
-app.get('/api/bot/config', (_req, res) => {
-  res.json(getKickBotConfig())
+app.get('/api/bot/config', async (_req, res) => {
+  try {
+    const config = await getKickBotConfig()
+    res.json(config)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.post('/api/bot/config', (req, res) => {
@@ -239,18 +253,23 @@ app.post('/api/bot/config', (req, res) => {
   res.json({ ok: true, ...config })
 })
 
-app.get('/api/bot/status', (_req, res) => {
-  res.json({
-    enabled: getKickBotConfig().enabled,
-    connected: botRuntime.connected,
-    lastSeenAt: botRuntime.lastSeenAt,
-    lastEventAt: botRuntime.lastEventAt,
-    lastChannel: botRuntime.lastChannel,
-    lastUser: botRuntime.lastUser,
-    lastContent: botRuntime.lastContent,
-    lastError: botRuntime.lastError,
-    config: getKickBotConfig()
-  })
+app.get('/api/bot/status', async (_req, res) => {
+  try {
+    const config = await getKickBotConfig()
+    res.json({
+      enabled: config.enabled,
+      connected: botRuntime.connected,
+      lastSeenAt: botRuntime.lastSeenAt,
+      lastEventAt: botRuntime.lastEventAt,
+      lastChannel: botRuntime.lastChannel,
+      lastUser: botRuntime.lastUser,
+      lastContent: botRuntime.lastContent,
+      lastError: botRuntime.lastError,
+      config
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.post('/api/bot/heartbeat', (req, res) => {
@@ -297,11 +316,16 @@ app.post('/api/audio-profile', (req, res) => {
   })
 })
 
-app.get('/api/tts-voice', (_req, res) => {
-  res.json({
-    voice: getTtsVoicePreference(),
-    available: AVAILABLE_TTS_VOICES
-  })
+app.get('/api/tts-voice', async (_req, res) => {
+  try {
+    const voice = await getTtsVoicePreference()
+    res.json({
+      voice,
+      available: AVAILABLE_TTS_VOICES
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.post('/api/tts-voice', (req, res) => {
@@ -309,11 +333,16 @@ app.post('/api/tts-voice', (req, res) => {
   res.json({ ok: true, voice, available: AVAILABLE_TTS_VOICES })
 })
 
-app.get('/api/tts-preset', (_req, res) => {
-  res.json({
-    preset: getTtsPresetPreference(),
-    available: TTS_EMOTION_PRESETS
-  })
+app.get('/api/tts-preset', async (_req, res) => {
+  try {
+    const preset = await getTtsPresetPreference()
+    res.json({
+      preset,
+      available: TTS_EMOTION_PRESETS
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.post('/api/tts-preset', (req, res) => {
