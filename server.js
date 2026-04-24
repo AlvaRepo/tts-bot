@@ -88,7 +88,7 @@ const kickBotRunner = createKickBotRunner({
   logger: console
 })
 
-const wss = new WebSocketServer({ port: WS_PORT })
+let wss = null // Se inicializará cuando el servidor HTTP esté listo
 
 function broadcast(event) {
   const data = JSON.stringify(event)
@@ -335,11 +335,15 @@ app.get('/panel', (_req, res) => {
   res.type('html').sendFile(resolve('./public/panel.html'))
 })
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`HTTP  → http://localhost:${PORT}`)
-  console.log(`WS    → ws://localhost:${WS_PORT}`)
+  console.log(`WS    → ws://localhost:${PORT}`)
   console.log(`Panel → http://localhost:${PORT}/panel`)
   console.log(`OBS   → http://localhost:${PORT}/overlay`)
+  
+  // WebSocket en el mismo servidor HTTP
+  wss = new WebSocketServer({ server })
+  console.log('✅ WebSocket conectado al servidor HTTP en puerto', PORT)
 })
 
 void kickBotRunner.start().catch(error => {

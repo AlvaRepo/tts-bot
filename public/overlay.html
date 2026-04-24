@@ -114,7 +114,9 @@
     }
 
     function connect() {
-      socket = new WebSocket('ws://localhost:49153?client=overlay')
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsPort = location.port ? `:${location.port}` : ''
+      socket = new WebSocket(`${wsProtocol}//${location.hostname}${wsPort}/ws?client=overlay`)
 
       socket.addEventListener('open', () => {
         if (reconnectTimer) {

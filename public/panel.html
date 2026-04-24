@@ -493,7 +493,9 @@
       }
     })
 
-    const ws = new WebSocket('ws://localhost:49153?client=panel')
+    const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsPort = location.port ? `:${location.port}` : ''
+    const ws = new WebSocket(`${wsProtocol}//${location.hostname}${wsPort}/ws?client=panel`)
     ws.addEventListener('message', event => {
       const data = JSON.parse(event.data)
       if (data.type === 'queue:updated') refreshQueue()
