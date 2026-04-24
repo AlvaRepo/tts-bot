@@ -490,8 +490,10 @@ function sanitizeCommandList(value, fallback) {
     ? value
     : typeof value === 'string'
       ? value.split(',')
-      : fallback
-    
+      : Array.isArray(fallback)
+        ? fallback
+        : []
+  
   return [...new Set(list.map(item => String(item).trim().toLowerCase()).filter(Boolean))]
 }
 
