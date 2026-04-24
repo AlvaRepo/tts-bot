@@ -87,6 +87,10 @@ export function createKickBotRunner({
         const message = parsed.data
         const content = (message.content || '').trim()
         const username = message.sender?.username || message.user?.username || 'unknown'
+        
+        // Debug: mostrar TODOS los datos del usuario
+        console.log('[kick-bot] raw sender:', JSON.stringify(message.sender).slice(0, 200))
+        
         const role = inferRole(message)
 
         console.log('[kick-bot] msg:', content.slice(0, 50), '@', username, 'role:', role)
