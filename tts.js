@@ -49,8 +49,8 @@ function getVoiceLocale(voiceName) {
 export async function synthesize(id, text) {
   const outPath = join(CACHE_DIR, `${id}.mp3`)
   
-  const voice = getTtsVoicePreference?.() ?? VOICE
-  const presetKey = getTtsPresetPreference?.() ?? 'neutral'
+  const voice = await getTtsVoicePreference?.() ?? VOICE
+  const presetKey = await getTtsPresetPreference?.() ?? 'neutral'
   const preset = TTS_EMOTION_PRESETS[presetKey] ?? TTS_EMOTION_PRESETS.neutral
   const voiceLocale = getVoiceLocale(voice)
   
