@@ -147,8 +147,8 @@ function inferRole(message) {
     const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
     if (senderUsername === 'alvaftw') return 'superuser'
     
-    const badges = (message.sender?.identity?.badges || [])
-    const badgeTypes = badges.map(b => (b.type || b.text || '').toLowerCase())
+    const badges = message.sender?.identity?.badges || []
+    const badgeTypes = badges.map(badge => badge.type?.toLowerCase() || badge.text?.toLowerCase() || '').filter(Boolean)
     
     // Priority: VIP > moderator > subscriber > viewer
     if (badgeTypes.includes('vip')) return 'vip'
