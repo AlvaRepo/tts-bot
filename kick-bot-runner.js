@@ -1,4 +1,4 @@
-import { WebSocketConnection, MessageEvents } from "kick_live_ws"
+import { WebSocketConnection } from "kick_live_ws"
 
 function toBool(value) {
   if (typeof value === 'boolean') return value
@@ -33,15 +33,15 @@ export function createKickBotRunner({
         chatroom_id: 5509024,
         channel_id: 5538457
       })
-      
+       
       connection.connect()
-      
-      // Escuchar mensajes de chat
-      connection.on(MessageEvents.CHATMESSAGE, (data) => {
+       
+      // Escuchar mensajes de chat (usar string 'chat' en lugar de MessageEvents)
+      connection.on('chat', (data) => {
         try {
           const username = data?.username || data?.sender?.username || 'unknown'
           const content = data?.content || ''
-          
+           
           updateBotRuntime({
             connected: true,
             lastSeenAt: Date.now(),
@@ -51,7 +51,7 @@ export function createKickBotRunner({
             lastContent: content,
             lastError: null
           })
-          
+           
           // Pasar el evento al router
           handleChatEvent({
             platform: 'kick',
@@ -66,22 +66,22 @@ export function createKickBotRunner({
           logger.error?.('[kick-bot] chat handler error', error)
         }
       })
-      
+       
       // Manejar errores de conexión
-      connection.on(MessageEvents.ERROR, (error) => {
+      connection.on('error', (error) => {
         updateBotRuntime({ connected: false, lastError: error?.message || String(error) })
         logger.error?.('[kick-bot] connection error', error)
       })
-      
-      connection.on(MessageEvents.DISCONNECT, () => {
+       
+      connection.on('disconnect', () => {
         updateBotRuntime({ connected: false })
         logger.log?.('[kick-bot] disconnected')
       })
-      
+       
       started = true
       updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
       logger.log?.('[kick-bot] connected to #srtavodka')
-      
+       
       return { started: true, channel: "srtavodka" }
     } catch (error) {
       updateBotRuntime({ connected: false, lastError: error.message })
@@ -105,8 +105,6 @@ export function createKickBotRunner({
   async function sendChatMessage(text) {
     try {
       if (connection && text) {
-        // kick_live_ws no tiene sendMessage en la versión básica
-        // Tendríamos que usar la API de Kick oSocket
         return { ok: false, error: 'sendMessage not available in kick_live_ws' }
       }
       return { ok: false, error: 'not connected' }
