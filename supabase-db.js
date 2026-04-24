@@ -41,9 +41,9 @@ const DEFAULT_BOT_CONFIG = {
   channel: '',
   chatroomId: null,
   prefix: '!',
-  allowTtsFromChat: false,
+  allowTtsFromChat: true,
   allowCommandsFromMods: true,
-  allowCommandsFromVip: false,
+  allowCommandsFromVip: true,
   viewerCommands: ['help', 'status', 'tts'],
   moderatorCommands: ['help', 'status', 'tts', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore'],
   streamerCommands: ['help', 'status', 'tts', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore']

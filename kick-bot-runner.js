@@ -63,15 +63,8 @@ export function createKickBotRunner({
       return { started: false, reason: 'missing-env' }
     }
 
-    try {
-      logger.log(`[kick-bot] connecting to chatroom ${chatroomId} (${channel})...`)
-
+try {
       ws = new WebSocket(WEBSOCKET_URL)
-
-      ws.onopen = () => {
-        logger.log('[kick-bot] WS connected, subscribing...')
-        ws.send(buildSubscribeMessage(chatroomId))
-      }
 
       ws.onmessage = async (event) => {
         const parsed = parsePusherMessage(event.data)
@@ -81,8 +74,12 @@ export function createKickBotRunner({
           const message = parsed.data
           const content = message.content || ''
           const username = message.sender?.username || message.user?.username || 'unknown'
+          const role = inferRole(message)
 
-          logger.log(`[kick-bot] received: "${content}" from @${username}`)
+          // Debug: ver rol del usuario (solo si contiene !tts)
+          if (content.startsWith('!tts')) {
+            logger.log(`[kick-bot] !tts from @${username} (role: ${role})`)
+          }
 
           updateBotRuntime({
             connected: true,
@@ -98,7 +95,7 @@ export function createKickBotRunner({
               platform: 'kick',
               channel,
               username,
-              role: inferRole(message),
+              role,
               content,
               raw: message
             })
@@ -124,13 +121,11 @@ export function createKickBotRunner({
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
         const originalOnOpen = ws.onopen
-        ws.onopen = () => {
+ws.onopen = () => {
           clearTimeout(timeout)
           if (typeof originalOnOpen === 'function') originalOnOpen()
           started = true
           updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
-          logger.log(`[kick-bot] connected to #${channel}`)
-          resolve()
         }
       })
 
