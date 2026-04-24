@@ -42,7 +42,7 @@ export function createKickBotCommandRouter({
   updateBotRuntime,
   sendChatMessage = null
 }) {
-function canUseCommand(role, command, config, username = null) {
+  function canUseCommand(role, command, config, username = null) {
     const normalizedCommand = normalizeCommandName(command)
     const normalizedRole = normalizeRole(role)
     const normalizedUsername = username ? String(username).toLowerCase().trim() : null
@@ -60,7 +60,7 @@ function canUseCommand(role, command, config, username = null) {
         return (config.viewerCommands ?? []).includes(normalizedCommand)
     }
     return (config.viewerCommands ?? []).includes(normalizedCommand)
-}
+  }
 
   function resolveVoiceInput(parsed) {
     if (!parsed) return ''
@@ -133,7 +133,7 @@ function canUseCommand(role, command, config, username = null) {
       return { handled: true, action: 'voice', voice: saved }
     }
 
-switch (parsed.command) {
+    switch (parsed.command) {
       case 'help': {
         const spoken = buildViewerHelpText(config, prefix)
         const result = enqueueMessage({
