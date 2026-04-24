@@ -74,25 +74,28 @@ export function createKickBotRunner({
         ws.send(buildSubscribeMessage(chatroomId))
       }
 
-      ws.onmessage = async (event) => {
+ws.onmessage = async (event) => {
         const parsed = parsePusherMessage(event.data)
         if (!parsed) return
 
         if (parsed.type === 'ChatMessage') {
           const message = parsed.data
+          const content = message.content || ''
+          const username = message.sender?.username || message.user?.username || 'unknown'
+
+          // Debug: ver qué llega
+          logger.log(`[kick-bot] received: "${content}" from @${username}`)
+
+          updateBotRuntime({
+            connected: true,
+            lastSeenAt: Date.now(),
+            lastEventAt: Date.now(),
+            lastChannel: channel,
+            lastUser: username,
+            lastContent: content
+          })
+
           try {
-            const content = message.content || ''
-            const username = message.sender?.username || message.user?.username || 'unknown'
-
-            updateBotRuntime({
-              connected: true,
-              lastSeenAt: Date.now(),
-              lastEventAt: Date.now(),
-              lastChannel: channel,
-              lastUser: username,
-              lastContent: content
-            })
-
             await handleChatEvent({
               platform: 'kick',
               channel,
@@ -106,6 +109,7 @@ export function createKickBotRunner({
             logger.error?.('[kick-bot] chat handler error', error)
           }
         }
+      }
       }
 
       ws.onerror = (error) => {
