@@ -1,4 +1,4 @@
-import { createClient } from "@retconned/kick-js"
+import { KickWebSocket } from 'kick-wss'
 
 function toBool(value) {
   if (typeof value === 'boolean') return value
@@ -13,53 +13,55 @@ export function createKickBotRunner({
   handleChatEvent,
   logger = console
 }) {
-  let client = null
+  let kickWS = null
   let started = false
-  
+  let channel = null
+
   async function start() {
     const config = getKickBotConfig()
     const envEnabled = toBool(process.env.KICK_BOT_ENABLED)
     const enabled = config.enabled || envEnabled
-    const channel = (process.env.KICK_BOT_CHANNEL ?? config.channel ?? '').trim().replace(/^#/, '')
-    const bearerToken = (process.env.KICK_BOT_BEARER ?? '').trim()
-    const cookies = (process.env.KICK_BOT_COOKIES ?? '').trim()
-      
+    channel = (process.env.KICK_BOT_CHANNEL ?? config.channel ?? '').trim().replace(/^#/, '')
+
     if (!enabled) {
       updateBotRuntime({ connected: false, lastError: null })
       return { started: false, reason: 'disabled' }
     }
-      
-    if (!channel || !bearerToken || !cookies) {
-      updateBotRuntime({ connected: false, lastError: 'missing Kick bot env vars' })
+
+    if (!channel) {
+      updateBotRuntime({ connected: false, lastError: 'missing KICK_BOT_CHANNEL' })
       return { started: false, reason: 'missing-env' }
     }
-      
+
     try {
-      client = createClient(channel, { logger: false, readOnly: false })
-        
-      client.on?.('ready', () => {
+      kickWS = new KickWebSocket({ debug: false })
+
+      kickWS.on('Connect', () => {
         started = true
         updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
-        logger.log(`[kick-bot] ready on #${channel}`)
+        logger.log(`[kick-bot] connected to #${channel}`)
       })
-        
-      client.on?.('ChatMessage', async (message) => {
+
+      kickWS.on('ChatMessage', async (message) => {
         try {
+          const content = message.content || message.message?.content || ''
+          const username = message.sender?.username || message.user?.username || 'unknown'
+
           updateBotRuntime({
             connected: true,
             lastSeenAt: Date.now(),
             lastEventAt: Date.now(),
             lastChannel: channel,
-            lastUser: message?.sender?.username ?? message?.sender?.displayName ?? 'unknown',
-            lastContent: message?.content ?? ''
+            lastUser: username,
+            lastContent: content
           })
-            
+
           await handleChatEvent({
             platform: 'kick',
             channel,
-            username: message?.sender?.username ?? message?.sender?.displayName ?? 'unknown',
+            username,
             role: inferRole(message),
-            content: message?.content ?? '',
+            content,
             raw: message
           })
         } catch (error) {
@@ -67,20 +69,19 @@ export function createKickBotRunner({
           logger.error?.('[kick-bot] chat handler error', error)
         }
       })
-        
-      client.on?.('error', (error) => {
-        updateBotRuntime({ connected: false, lastError: error?.message ?? String(error) })
-        logger.error?.('[kick-bot] client error', error)
+
+      kickWS.on('Error', (error) => {
+        updateBotRuntime({ connected: false, lastError: String(error) })
+        logger.error?.('[kick-bot] websocket error', error)
       })
-        
-      await client.login({
-        type: 'tokens',
-        credentials: {
-          bearerToken,
-          cookies
-        }
+
+      kickWS.on('Disconnect', () => {
+        updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
+        logger.log('[kick-bot] disconnected')
       })
-        
+
+      await kickWS.connect(channel)
+
       updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
       return { started: true, channel }
     } catch (error) {
@@ -89,64 +90,55 @@ export function createKickBotRunner({
       return { started: false, reason: 'connection-failed' }
     }
   }
-  
+
   function inferRole(message) {
-    const senderUsername = String(message?.sender?.username ?? message?.sender?.displayName ?? '').toLowerCase()
+    const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
     if (senderUsername === 'alvaftw') {
       return 'superuser'
     }
-      
+
     const flags = [
-      message?.sender?.is_streamer,
-      message?.sender?.isOwner,
-      message?.sender?.is_owner,
-      message?.sender?.is_moderator,
-      message?.sender?.isModerator,
-      message?.sender?.role
+      message.sender?.is_streamer,
+      message.sender?.isOwner,
+      message.sender?.is_owner,
+      message.sender?.is_moderator,
+      message.sender?.isModerator,
+      message.sender?.role
     ]
-      
+
     if (flags.some(Boolean)) {
-      const role = String(message?.sender?.role ?? '').toLowerCase()
+      const role = String(message.sender?.role ?? '').toLowerCase()
       if (role.includes('mod')) return 'moderator'
       if (role.includes('owner') || role.includes('streamer')) return 'streamer'
-      if (message?.sender?.is_streamer || message?.sender?.isOwner || message?.sender?.is_owner) return 'streamer'
-      if (message?.sender?.is_moderator || message?.sender?.isModerator) return 'moderator'
-      if (role.includes('vip') || message?.sender?.is_vip || message?.sender?.isVip) return 'vip'
+      if (message.sender?.is_streamer || message.sender?.isOwner || message.sender?.is_owner) return 'streamer'
+      if (message.sender?.is_moderator || message.sender?.isModerator) return 'moderator'
+      if (role.includes('vip') || message.sender?.is_vip || message.sender?.isVip) return 'vip'
     }
-      
+
     return 'viewer'
   }
-  
+
   async function stop() {
     try {
-      await client?.disconnect?.()
-      await client?.logout?.()
-      await client?.close?.()
+      kickWS?.disconnect?.()
     } catch {}
     started = false
-    client = null
+    kickWS = null
     updateBotRuntime({ connected: false })
     return { stopped: true }
   }
-  
+
   async function sendChatMessage(text) {
-    try {
-      const sendMessage = client?.sendMessage
-      if (typeof sendMessage === 'function') {
-        await sendMessage(text)
-        return { ok: true }
-      }
-      return { ok: false, error: 'sendMessage not available' }
-    } catch (error) {
-      return { ok: false, error: error.message }
-    }
+    // kick-wss es solo lectura, no puede enviar mensajes
+    // Para envío se necesitaría la API de Kick con auth
+    return { ok: false, error: 'sendMessage not supported with kick-wss (read-only)' }
   }
-  
+
   return {
     start,
     stop,
     isStarted: () => started,
-    getClient: () => client,
+    getClient: () => kickWS,
     sendChatMessage
   }
 }
