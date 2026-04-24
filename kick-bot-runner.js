@@ -21,10 +21,10 @@ export function createKickBotRunner({
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
   const WEBSOCKET_URL = `wss://ws-us2.pusher.com/app/${PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0`
 
-  function buildSubscribeMessage(chatroomId) {
+  function buildSubscribeMessage(id) {
     return JSON.stringify({
       event: 'pusher:subscribe',
-      data: { channel: `chatrooms.${chatroomId}.v2` }
+      data: { channel: `chatrooms.${id}.v2` }
     })
   }
 
@@ -50,7 +50,6 @@ export function createKickBotRunner({
     const enabled = config.enabled || envEnabled
     channel = (process.env.KICK_BOT_CHANNEL ?? config.channel ?? '').trim().replace(/^#/, '')
 
-    // Los IDs que nos dio el usuario
     const envChatroomId = parseInt(process.env.KICK_CHATROOM_ID ?? '', 10)
     chatroomId = envChatroomId || config.chatroomId || null
 
@@ -83,7 +82,6 @@ export function createKickBotRunner({
           const content = message.content || ''
           const username = message.sender?.username || message.user?.username || 'unknown'
 
-          // Debug log
           logger.log(`[kick-bot] received: "${content}" from @${username}`)
 
           updateBotRuntime({
@@ -125,8 +123,10 @@ export function createKickBotRunner({
       // Esperar a que conecte (timeout 10s)
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
+        const originalOnOpen = ws.onopen
         ws.onopen = () => {
           clearTimeout(timeout)
+          if (typeof originalOnOpen === 'function') originalOnOpen()
           started = true
           updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
           logger.log(`[kick-bot] connected to #${channel}`)
@@ -180,7 +180,6 @@ export function createKickBotRunner({
   }
 
   async function sendChatMessage(text) {
-    // WebSocket nativo no puede enviar mensajes (solo recibe)
     return { ok: false, error: 'sendMessage not supported (read-only)' }
   }
 
