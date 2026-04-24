@@ -42,25 +42,29 @@ export function createKickBotCommandRouter({
   updateBotRuntime,
   sendChatMessage = null
 }) {
-  function canUseCommand(role, command, config, username = null) {
-    const normalizedCommand = normalizeCommandName(command)
-    const normalizedRole = normalizeRole(role)
-    const normalizedUsername = username ? String(username).toLowerCase().trim() : null
+   function canUseCommand(role, command, config, username = null) {
+     const normalizedCommand = normalizeCommandName(command)
+     const normalizedRole = normalizeRole(role)
+     const normalizedUsername = username ? String(username).toLowerCase().trim() : null
 
-    // Superuser bypass - check username directly
-    if (normalizedUsername === 'alvaftw') return true
+     // Superuser bypass - check username directly
+     if (normalizedUsername === 'alvaftw') return true
 
-    if (normalizedRole === 'superuser' || normalizedRole === 'streamer') return true
-    if (normalizedRole === 'moderator') {
-        if (!config.allowCommandsFromMods) return false
-        return (config.moderatorCommands ?? []).includes(normalizedCommand)
-    }
-    if (normalizedRole === 'vip') {
-        if (config.allowCommandsFromVip && (config.moderatorCommands ?? []).includes(normalizedCommand)) return true
-        return (config.viewerCommands ?? []).includes(normalizedCommand)
-    }
-    return (config.viewerCommands ?? []).includes(normalizedCommand)
-  }
+     if (normalizedRole === 'superuser' || normalizedRole === 'streamer') return true
+     if (normalizedRole === 'moderator') {
+         if (!config.allowCommandsFromMods) return false
+         return (config.moderatorCommands ?? []).includes(normalizedCommand)
+     }
+     if (normalizedRole === 'vip') {
+         if (!config.allowCommandsFromVip) return false
+         return (config.vipCommands ?? []).includes(normalizedCommand)
+     }
+     if (normalizedRole === 'subscriber') {
+         if (!config.allowCommandsFromSubscribers) return false
+         return (config.subscriberCommands ?? []).includes(normalizedCommand)
+     }
+     return (config.viewerCommands ?? []).includes(normalizedCommand)
+   }
 
   function resolveVoiceInput(parsed) {
     if (!parsed) return ''

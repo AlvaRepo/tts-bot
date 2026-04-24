@@ -359,6 +359,8 @@ export function sanitizeKickBotConfig(value) {
   
   const viewerCommands = sanitizeCommandList(input.viewerCommands, DEFAULT_BOT_CONFIG.viewerCommands)
   const moderatorCommands = sanitizeCommandList(input.moderatorCommands, DEFAULT_BOT_CONFIG.moderatorCommands)
+  const subscriberCommands = sanitizeCommandList(input.subscriberCommands, DEFAULT_BOT_CONFIG.subscriberCommands)
+  const vipCommands = sanitizeCommandList(input.vipCommands, DEFAULT_BOT_CONFIG.vipCommands)
   const streamerCommands = sanitizeCommandList(input.streamerCommands, DEFAULT_BOT_CONFIG.streamerCommands)
 
   // Parse chatroomId - puede venir como number o string
@@ -376,8 +378,11 @@ export function sanitizeKickBotConfig(value) {
     allowTtsFromChat: input.allowTtsFromChat !== false,
     allowCommandsFromMods: input.allowCommandsFromMods !== false,
     allowCommandsFromVip: input.allowCommandsFromVip === true,
+    allowCommandsFromSubscribers: input.allowCommandsFromSubscribers !== false,
     viewerCommands,
     moderatorCommands,
+    subscriberCommands,
+    vipCommands,
     streamerCommands
   }
 }

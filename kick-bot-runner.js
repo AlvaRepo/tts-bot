@@ -143,23 +143,20 @@ export function createKickBotRunner({
     }
   }
 
-  function inferRole(message) {
+function inferRole(message) {
     const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
     if (senderUsername === 'alvaftw') return 'superuser'
     
-    const flags = [
-      message.sender?.is_streamer,
-      message.sender?.isOwner,
-      message.sender?.is_moderator,
-      message.sender?.role
-    ]
-
-    if (flags.some(Boolean)) {
-      const role = String(message.sender?.role ?? '').toLowerCase()
-      if (role.includes('mod')) return 'moderator'
-      if (role.includes('owner') || role.includes('streamer')) return 'streamer'
-      if (role.includes('vip') || message.sender?.is_vip) return 'vip'
-    }
+    const badges = (message.sender?.identity?.badges || [])
+    const badgeTypes = badges.map(b => (b.type || b.text || '').toLowerCase())
+    
+    // Priority: VIP > moderator > subscriber > viewer
+    if (badgeTypes.includes('vip')) return 'vip'
+    if (badgeTypes.includes('moderator') || badgeTypes.includes('mod')) return 'moderator'
+    if (badgeTypes.includes('subscriber')) return 'subscriber'
+    
+    return 'viewer'
+}
 
     return 'viewer'
   }
