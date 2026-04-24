@@ -32,6 +32,17 @@ function buildSSML(voice, text, preset) {
 }
 
 /**
+ * Extrae el voiceLocale de un nombre de voz (ej: "es-AR-TomasNeural" → "es-AR")
+ */
+function getVoiceLocale(voiceName) {
+  const parts = voiceName.split('-')
+  if (parts.length >= 2) {
+    return `${parts[0]}-${parts[1]}`
+  }
+  return 'es-AR' // fallback
+}
+
+/**
  * Sintetiza texto y devuelve la ruta absoluta del archivo .mp3.
  * Lanza Error si falla.
  */
@@ -41,13 +52,16 @@ export async function synthesize(id, text) {
   const voice = getTtsVoicePreference?.() ?? VOICE
   const presetKey = getTtsPresetPreference?.() ?? 'neutral'
   const preset = TTS_EMOTION_PRESETS[presetKey] ?? TTS_EMOTION_PRESETS.neutral
+  const voiceLocale = getVoiceLocale(voice)
   
   try {
     const tts = new MsEdgeTTS()
-    
-    // Configurar voz y formato de audio
-    await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
-    
+      
+    // Configurar voz y formato de audio (v2.x requiere voiceLocale)
+    await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, {
+      voiceLocale
+    })
+      
     // Construir SSML con presets de emoción
     const ssml = buildSSML(voice, text, preset)
     
