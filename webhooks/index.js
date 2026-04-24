@@ -1,5 +1,5 @@
 import express from 'express'
-import { claimWebhookDelivery, markWebhookDeliveryProcessed, releaseWebhookDelivery } from '../db.js'
+import { claimWebhookDelivery, markWebhookDeliveryProcessed, releaseWebhookDelivery } from '../supabase-db.js'
 import { unresolvedProviderHeaderAssumptions } from './notes.js'
 import { deriveDedupeKey } from './shared.js'
 import { provider as paypalProvider, verifyPayPalAuth, normalizePayPal } from './paypal.js'

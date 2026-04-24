@@ -1,5 +1,5 @@
 import { synthesize } from './tts.js'
-import { updateMessage } from './db.js'
+import { updateMessage } from './supabase-db.js'
 
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES ?? '3', 10)
 
