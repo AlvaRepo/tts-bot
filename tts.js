@@ -27,10 +27,9 @@ async function writeMockMp3(outPath, text) {
  */
 export async function synthesize(id, text) {
   const outPath = join(CACHE_DIR, `${id}.mp3`)
-  // En Render (donde no hay edge-tts), forzamos MOCK
-  const isRender = process.env.RENDER === 'true'
-  if (process.env.TTS_MOCK === '1' || isRender) {
-    console.log('🤖 Modo MOCK activado para Render (sin edge-tts)')
+  // Si está en modo MOCK manual, usamos mock
+  if (process.env.TTS_MOCK === '1') {
+    console.log('🤖 Modo MOCK manual activado')
     await writeMockMp3(outPath, text)
     return outPath
   }

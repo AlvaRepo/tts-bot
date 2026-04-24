@@ -7,7 +7,8 @@
     "start": "node server.js",
     "test": "node test/smoke.js",
     "check:supabase": "node check-supabase.js",
-    "migrate:supabase": "node migrate-to-supabase.js"
+    "migrate:supabase": "node migrate-to-supabase.js",
+    "build": "bash build.sh"
   },
   "dependencies": {
     "@retconned/kick-js": "^0.5.4",
