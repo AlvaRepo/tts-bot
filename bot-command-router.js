@@ -113,9 +113,6 @@ export function createKickBotCommandRouter({
     const content = normalizeText(event?.content ?? event?.text ?? '')
     const parsed = parseBotCommand(content, prefix)
 
-    // Debug
-    console.log('[router] role:', event?.role, 'cmd:', parsed?.command, 'cfg.viewerCommands:', config.viewerCommands)
-
     updateBotRuntime?.({
       lastEventAt: Date.now(),
       lastChannel: normalizeText(event?.channel ?? ''),

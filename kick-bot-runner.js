@@ -1,4 +1,4 @@
-// Kick bot usando WebSocket nativo - no requiere API externa
+// Kick bot usando WebSocket nativo
 
 function toBool(value) {
   if (typeof value === 'boolean') return value
@@ -59,107 +59,94 @@ export function createKickBotRunner({
     }
 
     if (!channel || !chatroomId) {
-      updateBotRuntime({ connected: false, lastError: 'missing KICK_BOT_CHANNEL or KICK_CHATROOM_ID' })
+      updateBotRuntime({ connected: false, lastError: 'missing channel or chatroomId' })
       return { started: false, reason: 'missing-env' }
     }
 
-try {
+    try {
       ws = new WebSocket(WEBSOCKET_URL)
 
-      ws.onmessage = async (event) => {
-        // Debug: ver si llega algo
-        console.log('[ws-raw]', event.data.slice(0, 200))
+      // Guardar el handler original para después
+      let resolved = false
+      ws.onopen = () => {
+        // SUSCRIBIRSE AL CANAL DE CHAT
+        const subMsg = buildSubscribeMessage(chatroomId)
+        console.log('[kick-bot] subscribing:', subMsg)
+        ws.send(subMsg)
         
+        resolved = true
+        started = true
+        updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
+        console.log('[kick-bot] connected to chatroom:', chatroomId)
+      }
+
+      ws.onmessage = async (event) => {
         const parsed = parsePusherMessage(event.data)
-        if (!parsed) {
-          console.log('[ws-parse] failed')
-          return
-        }
+        if (!parsed || parsed.type !== 'ChatMessage') return
 
-        console.log('[ws-msg] type:', parsed.type)
+        const message = parsed.data
+        const content = (message.content || '').trim()
+        const username = message.sender?.username || message.user?.username || 'unknown'
+        const role = inferRole(message)
 
-        if (parsed.type === 'ChatMessage') {
-          const message = parsed.data
-          console.log('[ws-msg] full:', JSON.stringify(message).slice(0, 300))
-          
-          let content = message.content || ''
-          const username = message.sender?.username || message.user?.username || 'unknown'
-          const role = inferRole(message)
-          
-          // Limpiar contenido - trim y verificar que sea comando
-          content = content.trim()
-          
-          // Debug: mostrar TODOS los mensajes
-          console.log('[ws-msg] content:', content, 'user:', username)
+        console.log('[kick-bot] msg:', content.slice(0, 50), '@', username)
 
-          updateBotRuntime({
-            connected: true,
-            lastSeenAt: Date.now(),
-            lastEventAt: Date.now(),
-            lastChannel: channel,
-            lastUser: username,
-            lastContent: content
+        updateBotRuntime({
+          connected: true,
+          lastSeenAt: Date.now(),
+          lastEventAt: Date.now(),
+          lastChannel: channel,
+          lastUser: username,
+          lastContent: content
+        })
+
+        try {
+          await handleChatEvent({
+            platform: 'kick',
+            channel,
+            username,
+            role,
+            content,
+            raw: message
           })
-
-          try {
-            await handleChatEvent({
-              platform: 'kick',
-              channel,
-              username,
-              role,
-              content,
-              raw: message
-            })
-          } catch (error) {
-            updateBotRuntime({ lastError: error.message })
-            logger.error?.('[kick-bot] error', error.message)
-          }
+        } catch (error) {
+          updateBotRuntime({ lastError: error.message })
         }
       }
 
       ws.onerror = (error) => {
-        updateBotRuntime({ connected: false, lastError: String(error) })
-        logger.error?.('[kick-bot] WS error', error)
+        console.log('[kick-bot] error:', error)
       }
 
       ws.onclose = () => {
-        updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
-        logger.log('[kick-bot] WS disconnected')
+        console.log('[kick-bot] disconnected')
         started = false
+        updateBotRuntime({ connected: false })
       }
 
-      // Esperar a que conecte (timeout 10s)
+      // Esperar conexión (timeout 10s)
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
-        const originalOnOpen = ws.onopen
-ws.onopen = () => {
-          clearTimeout(timeout)
-          if (typeof originalOnOpen === 'function') originalOnOpen()
-          started = true
-          updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
-        }
+        setTimeout(() => {
+          if (!resolved) reject(new Error('timeout'))
+        }, 10000)
       })
 
       return { started: true, channel, chatroomId }
     } catch (error) {
       updateBotRuntime({ connected: false, lastError: error.message })
-      logger.error?.('[kick-bot] failed to start:', error)
-      return { started: false, reason: 'connection-failed' }
+      console.log('[kick-bot] failed:', error.message)
+      return { started: false, reason: 'error' }
     }
   }
 
   function inferRole(message) {
     const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
-    if (senderUsername === 'alvaftw') {
-      return 'superuser'
-    }
-
+    if (senderUsername === 'alvaftw') return 'superuser'
+    
     const flags = [
       message.sender?.is_streamer,
       message.sender?.isOwner,
-      message.sender?.is_owner,
       message.sender?.is_moderator,
-      message.sender?.isModerator,
       message.sender?.role
     ]
 
@@ -167,18 +154,14 @@ ws.onopen = () => {
       const role = String(message.sender?.role ?? '').toLowerCase()
       if (role.includes('mod')) return 'moderator'
       if (role.includes('owner') || role.includes('streamer')) return 'streamer'
-      if (message.sender?.is_streamer || message.sender?.isOwner || message.sender?.is_owner) return 'streamer'
-      if (message.sender?.is_moderator || message.sender?.isModerator) return 'moderator'
-      if (role.includes('vip') || message.sender?.is_vip || message.sender?.isVip) return 'vip'
+      if (role.includes('vip') || message.sender?.is_vip) return 'vip'
     }
 
     return 'viewer'
   }
 
   async function stop() {
-    try {
-      ws?.close()
-    } catch {}
+    ws?.close()
     started = false
     ws = null
     updateBotRuntime({ connected: false })
@@ -186,7 +169,7 @@ ws.onopen = () => {
   }
 
   async function sendChatMessage(text) {
-    return { ok: false, error: 'sendMessage not supported (read-only)' }
+    return { ok: false, error: 'not supported' }
   }
 
   return {

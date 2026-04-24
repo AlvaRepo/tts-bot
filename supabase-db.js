@@ -44,9 +44,9 @@ const DEFAULT_BOT_CONFIG = {
   allowTtsFromChat: true,
   allowCommandsFromMods: true,
   allowCommandsFromVip: true,
-  viewerCommands: ['help', 'status', 'tts'],
-  moderatorCommands: ['help', 'status', 'tts', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore'],
-  streamerCommands: ['help', 'status', 'tts', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore']
+  viewerCommands: ['tts', 'help', 'status'],
+  moderatorCommands: ['tts', 'help', 'status', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore'],
+  streamerCommands: ['tts', 'help', 'status', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore']
 }
 
 // Validación de UUID básica para evitar errores de PostgreSQL
