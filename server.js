@@ -132,8 +132,8 @@ app.post('/api/control/:action', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/message/:id/cancel', (req, res) => {
-  const message = getMessage(req.params.id)
+app.post('/api/message/:id/cancel', async (req, res) => {
+  const message = await getMessage(req.params.id)
   if (!message) return res.status(404).json({ error: 'not found' })
   const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
     ? req.body.reason.trim()
@@ -183,8 +183,8 @@ app.post('/api/message/:id/replay', async (req, res) => {
   }
 })
 
-app.delete('/api/message/:id', (req, res) => {
-  const message = getMessage(req.params.id)
+app.delete('/api/message/:id', async (req, res) => {
+  const message = await getMessage(req.params.id)
   if (!message) return res.status(404).json({ error: 'not found' })
   queue.discard(message.id, 'DELETED')
   deleteMessage(message.id)

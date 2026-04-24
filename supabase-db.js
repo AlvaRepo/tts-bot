@@ -94,35 +94,42 @@ async function getSettingBoolean(key, fallback = false) {
   return raw === 'true' || raw === '1' || raw === true
 }
 
+// Validación de UUID básica para evitar errores de PostgreSQL
+function isValidUuid(id) {
+  return id && typeof id === 'string' && id !== 'undefined' && id !== 'null'
+}
+
 // Funciones principales de mensajes
-export async function insertMessage(msg) {
-  const { data, error } = await supabaseAdmin
+export async function getMessage(id) {
+  if (!isValidUuid(id)) {
+    console.error('Error al obtener mensaje: ID inválido:', id)
+    return null
+  }
+  
+  const { data, error } = await supabase
     .from('messages')
-    .insert({
-      id: msg.id,
-      source: msg.source,
-      donor_name: msg.donor_name || null,
-      amount: msg.amount || null,
-      text: msg.text,
-      status: msg.status || 'PENDING',
-      retries: msg.retries || 0,
-      audio_path: msg.audio_path || null,
-      created_at: new Date(msg.created_at || Date.now()).toISOString(),
-      updated_at: new Date().toISOString(),
-      error_msg: msg.error_msg || null
-    })
-    .select()
+    .select('*')
+    .eq('id', id)
   
   if (error) {
-    console.error('Error al insertar mensaje:', error)
-    throw error
+    console.error('Error al obtener mensaje:', error)
+    return null
   }
+  
+  // Supabase devuelve un array, tomamos el primer elemento
+  return data && data.length > 0 ? data[0] : null
+}
   
   // Supabase devuelve un array en INSERT con .select(), tomamos el primer elemento
   return data && data.length > 0 ? data[0] : null
 }
 
 export async function updateMessage(id, fields) {
+  if (!isValidUuid(id)) {
+    console.error('Error al actualizar mensaje: ID inválido:', id)
+    return null
+  }
+  
   const updateData = {
     ...fields,
     updated_at: new Date().toISOString()
