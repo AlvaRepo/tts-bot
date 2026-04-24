@@ -35,7 +35,7 @@ export class MessageQueue {
   }
 
   discard(id, reason = 'CANCELLED') {
-    if (this.#current?.id === id) {
+    if (this.#current?.id === id && this.#current) {
       this.#current.status = 'SKIPPED'
       updateMessage(id, { status: 'SKIPPED', error_msg: reason })
       this.#clearPlaybackTimeout()
