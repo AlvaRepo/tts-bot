@@ -2,10 +2,10 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
+# Solo necesitamos Chromium para Puppeteer (si se usa), cero Python
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates chromium chromium-sandbox \
-  && rm -rf /var/lib/apt/lists/* \
-  && pip3 install --no-cache-dir --break-system-packages edge-tts
+  && apt-get install -y --no-install-recommends chromium chromium-sandbox \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN printf '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --disable-setuid-sandbox "$@"\n' > /usr/local/bin/chromium-wrapper \
   && chmod +x /usr/local/bin/chromium-wrapper
