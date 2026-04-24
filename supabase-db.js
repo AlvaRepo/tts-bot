@@ -48,6 +48,11 @@ const DEFAULT_BOT_CONFIG = {
   streamerCommands: ['help', 'status', 'tts', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore']
 }
 
+// Validación de UUID básica para evitar errores de PostgreSQL
+function isValidUuid(id) {
+  return id && typeof id === 'string' && id !== 'undefined' && id !== 'null'
+}
+
 // Funciones auxiliares para settings
 async function getSetting(key) {
   const { data, error } = await supabase
@@ -94,12 +99,34 @@ async function getSettingBoolean(key, fallback = false) {
   return raw === 'true' || raw === '1' || raw === true
 }
 
-// Validación de UUID básica para evitar errores de PostgreSQL
-function isValidUuid(id) {
-  return id && typeof id === 'string' && id !== 'undefined' && id !== 'null'
+// Funciones principales de mensajes
+export async function insertMessage(msg) {
+  const { data, error } = await supabaseAdmin
+    .from('messages')
+    .insert({
+      id: msg.id,
+      source: msg.source,
+      donor_name: msg.donor_name || null,
+      amount: msg.amount || null,
+      text: msg.text,
+      status: msg.status || 'PENDING',
+      retries: msg.retries || 0,
+      audio_path: msg.audio_path || null,
+      created_at: new Date(msg.created_at || Date.now()).toISOString(),
+      updated_at: new Date().toISOString(),
+      error_msg: msg.error_msg || null
+    })
+    .select()
+  
+  if (error) {
+    console.error('Error al insertar mensaje:', error)
+    throw error
+  }
+  
+  // Supabase devuelve un array en INSERT con .select(), tomamos el primer elemento
+  return data && data.length > 0 ? data[0] : null
 }
 
-// Funciones principales de mensajes
 export async function getMessage(id) {
   if (!isValidUuid(id)) {
     console.error('Error al obtener mensaje: ID inválido:', id)
@@ -117,10 +144,6 @@ export async function getMessage(id) {
   }
   
   // Supabase devuelve un array, tomamos el primer elemento
-  return data && data.length > 0 ? data[0] : null
-}
-  
-  // Supabase devuelve un array en INSERT con .select(), tomamos el primer elemento
   return data && data.length > 0 ? data[0] : null
 }
 
@@ -149,21 +172,6 @@ export async function updateMessage(id, fields) {
   
   // Supabase devuelve un array en los UPDATE, tomamos el primer elemento
   return data && data.length > 0 ? data[0] : await getMessage(id)
-}
-
-export async function getMessage(id) {
-  const { data, error } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('id', id)
-  
-  if (error) {
-    console.error('Error al obtener mensaje:', error)
-    return null
-  }
-  
-  // Supabase devuelve un array, tomamos el primer elemento
-  return data && data.length > 0 ? data[0] : null
 }
 
 export async function getHistory(limit = 50, filters = {}) {
@@ -368,8 +376,7 @@ export function sanitizeKickBotConfig(value) {
 // Funciones de webhook dedupe
 export async function claimWebhookDelivery({ provider, dedupe_key, source = 'webhook', provider_event_id = null, provider_delivery_id = null, payload_json = null }) {
   const now = new Date().toISOString()
-  
-  // Intentar insertar (ON CONFLICT maneja duplicados)
+    
   const { data, error } = await supabaseAdmin
     .from('webhook_dedupe')
     .insert({
@@ -385,7 +392,7 @@ export async function claimWebhookDelivery({ provider, dedupe_key, source = 'web
     })
     .select()
     .single()
-  
+    
   if (error) {
     // Probablemente es un duplicado
     const existing = await getWebhookDelivery(provider, dedupe_key)
@@ -402,7 +409,7 @@ export async function getWebhookDelivery(provider, dedupeKey) {
     .eq('provider', provider)
     .eq('dedupe_key', dedupeKey)
     .single()
-  
+    
   if (error && error.code !== 'PGRST116') {
     console.error('Error al obtener webhook delivery:', error)
   }
@@ -423,7 +430,7 @@ export async function markWebhookDeliveryProcessed(provider, dedupeKey, messageI
     .eq('dedupe_key', dedupeKey)
     .select()
     .single()
-  
+    
   if (error) {
     console.error('Error al marcar webhook como procesado:', error)
   }
@@ -443,7 +450,7 @@ export async function markWebhookDeliveryFailed(provider, dedupeKey, errorMsg) {
     .eq('dedupe_key', dedupeKey)
     .select()
     .single()
-  
+    
   if (error) {
     console.error('Error al marcar webhook como fallido:', error)
   }
@@ -457,7 +464,7 @@ export async function releaseWebhookDelivery(provider, dedupeKey) {
     .delete()
     .eq('provider', provider)
     .eq('dedupe_key', dedupeKey)
-  
+    
   if (error) {
     console.error('Error al liberar webhook:', error)
   }
@@ -470,7 +477,7 @@ function sanitizeCommandList(value, fallback) {
     : typeof value === 'string'
       ? value.split(',')
       : fallback
-  
+    
   return [...new Set(list.map(item => String(item).trim().toLowerCase()).filter(Boolean))]
 }
 
@@ -491,28 +498,28 @@ export function initDB() {
 // Función para limpieza de datos antiguos (opcional, puede usarse con cron)
 export async function runCleanup() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  
+    
   // Limpiar mensajes antiguos completados
   const { error: msgError } = await supabaseAdmin
     .from('messages')
     .delete()
     .in('status', ['DONE', 'FAILED', 'SKIPPED'])
     .lt('created_at', sevenDaysAgo)
-  
+    
   if (msgError) {
     console.error('Error al limpiar mensajes:', msgError)
   }
-  
+    
   // Limpiar webhooks antiguos
   const { error: webError } = await supabaseAdmin
     .from('webhook_dedupe')
     .delete()
     .in('status', ['PROCESSED', 'FAILED'])
     .lt('created_at', sevenDaysAgo)
-  
+    
   if (webError) {
     console.error('Error al limpiar webhooks:', webError)
   }
-  
+    
   console.log('🧹 Limpieza de datos antiguos completada')
 }
