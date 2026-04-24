@@ -147,32 +147,40 @@ app.post('/api/message/:id/cancel', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/message/:id/restore', (req, res) => {
-  const message = getMessage(req.params.id)
-  if (!message) return res.status(404).json({ error: 'not found' })
+app.post('/api/message/:id/restore', async (req, res) => {
+  try {
+    const message = await getMessage(req.params.id)
+    if (!message) return res.status(404).json({ error: 'not found' })
 
-  const restored = messageService.enqueueMessage({
-    source: message.source,
-    donor_name: message.donor_name,
-    amount: message.amount,
-    text: message.text
-  })
+    const restored = messageService.enqueueMessage({
+      source: message.source,
+      donor_name: message.donor_name,
+      amount: message.amount,
+      text: message.text
+    })
 
-  res.status(201).json({ ok: true, id: restored.id, restored_from: message.id })
+    res.status(201).json({ ok: true, id: restored.id, restored_from: message.id })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
-app.post('/api/message/:id/replay', (req, res) => {
-  const message = getMessage(req.params.id)
-  if (!message) return res.status(404).json({ error: 'not found' })
+app.post('/api/message/:id/replay', async (req, res) => {
+  try {
+    const message = await getMessage(req.params.id)
+    if (!message) return res.status(404).json({ error: 'not found' })
 
-  const replay = messageService.enqueueMessage({
-    source: message.source,
-    donor_name: message.donor_name,
-    amount: message.amount,
-    text: message.text
-  })
+    const replay = messageService.enqueueMessage({
+      source: message.source,
+      donor_name: message.donor_name,
+      amount: message.amount,
+      text: message.text
+    })
 
-  res.status(201).json({ ok: true, id: replay.id, replay_of: message.id })
+    res.status(201).json({ ok: true, id: replay.id, replay_of: message.id })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.delete('/api/message/:id', (req, res) => {

@@ -112,14 +112,14 @@ export async function insertMessage(msg) {
       error_msg: msg.error_msg || null
     })
     .select()
-    .single()
   
   if (error) {
     console.error('Error al insertar mensaje:', error)
     throw error
   }
   
-  return data
+  // Supabase devuelve un array en INSERT con .select(), tomamos el primer elemento
+  return data && data.length > 0 ? data[0] : null
 }
 
 export async function updateMessage(id, fields) {
@@ -133,7 +133,6 @@ export async function updateMessage(id, fields) {
     .update(updateData)
     .eq('id', id)
     .select()
-    .single()
   
   if (error) {
     console.error('Error al actualizar mensaje:', error)
@@ -141,7 +140,8 @@ export async function updateMessage(id, fields) {
     return getMessage(id)
   }
   
-  return data
+  // Supabase devuelve un array en los UPDATE, tomamos el primer elemento
+  return data && data.length > 0 ? data[0] : await getMessage(id)
 }
 
 export async function getMessage(id) {
@@ -149,13 +149,14 @@ export async function getMessage(id) {
     .from('messages')
     .select('*')
     .eq('id', id)
-    .single()
   
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
     console.error('Error al obtener mensaje:', error)
+    return null
   }
   
-  return data || null
+  // Supabase devuelve un array, tomamos el primer elemento
+  return data && data.length > 0 ? data[0] : null
 }
 
 export async function getHistory(limit = 50, filters = {}) {
