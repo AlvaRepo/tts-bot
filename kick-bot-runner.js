@@ -89,7 +89,7 @@ export function createKickBotRunner({
         const username = message.sender?.username || message.user?.username || 'unknown'
         const role = inferRole(message)
 
-        console.log('[kick-bot] msg:', content.slice(0, 50), '@', username)
+        console.log('[kick-bot] msg:', content.slice(0, 50), '@', username, 'role:', role)
 
         updateBotRuntime({
           connected: true,

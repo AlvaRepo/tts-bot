@@ -120,9 +120,15 @@ export function createKickBotCommandRouter({
       lastContent: content
     })
 
-    if (!parsed) return { handled: false, ignored: true }
+    if (!parsed) {
+      console.log('[router] ignored - no command')
+      return { handled: false, ignored: true }
+    }
 
-    if (!canUseCommand(event?.role, parsed.command, config, event?.username)) {
+    const canUse = canUseCommand(event?.role, parsed.command, config, event?.username)
+    console.log('[router] role:', event?.role, 'cmd:', parsed.command, 'allowed:', canUse)
+
+    if (!canUse) {
       return { handled: true, denied: true, action: parsed.command }
     }
 
