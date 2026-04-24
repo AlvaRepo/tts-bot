@@ -91,6 +91,7 @@ const kickBotRunner = createKickBotRunner({
 let wss = null // Se inicializará cuando el servidor HTTP esté listo
 
 function broadcast(event) {
+  if (!wss) return // Early exit si WebSocket no está listo
   const data = JSON.stringify(event)
   for (const client of wss.clients) {
     if (client.readyState === 1) client.send(data)
@@ -103,6 +104,7 @@ function resolveAudioProfile(preference, runtimeDefault) {
 }
 
 broadcast.clientCount = () => {
+  if (!wss) return 0
   let count = 0
   for (const client of wss.clients) {
     if (client.readyState === 1 && client.clientType === 'overlay') count += 1
@@ -365,24 +367,28 @@ const server = app.listen(PORT, () => {
   console.log(`OBS   → http://localhost:${PORT}/overlay`)
   
   // WebSocket en el mismo servidor HTTP
-  wss = new WebSocketServer({ server })
-  console.log('✅ WebSocket conectado al servidor HTTP en puerto', PORT)
+  try {
+    wss = new WebSocketServer({ server })
+    console.log('✅ WebSocket conectado al servidor HTTP en puerto', PORT)
 
-  wss.on('connection', (ws, req) => {
-    const url = new URL(req.url, 'http://localhost')
-    ws.clientType = url.searchParams.get('client') ?? 'unknown'
+    wss.on('connection', (ws, req) => {
+      const url = new URL(req.url, 'http://localhost')
+      ws.clientType = url.searchParams.get('client') ?? 'unknown'
 
-    ws.on('message', raw => {
-      try {
-        const event = JSON.parse(raw.toString())
-        if (event.type === 'audio:ended' && event.id) queue.audioEnded(event.id)
-      } catch {
-        // ignore malformed messages
-      }
+      ws.on('message', raw => {
+        try {
+          const event = JSON.parse(raw.toString())
+          if (event.type === 'audio:ended' && event.id) queue.audioEnded(event.id)
+        } catch {
+          // ignore malformed messages
+        }
+      })
     })
-  })
 
-  queue.init(broadcast)
+    queue.init(broadcast)
+  } catch (error) {
+    console.error('❌ Error creando WebSocketServer:', error)
+  }
 })
 
 void kickBotRunner.start().catch(error => {
