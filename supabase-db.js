@@ -39,6 +39,7 @@ export const TTS_EMOTION_PRESETS = {
 const DEFAULT_BOT_CONFIG = {
   enabled: false,
   channel: '',
+  chatroomId: null,
   prefix: '!',
   allowTtsFromChat: false,
   allowCommandsFromMods: true,
@@ -359,10 +360,18 @@ export function sanitizeKickBotConfig(value) {
   const viewerCommands = sanitizeCommandList(input.viewerCommands, DEFAULT_BOT_CONFIG.viewerCommands)
   const moderatorCommands = sanitizeCommandList(input.moderatorCommands, DEFAULT_BOT_CONFIG.moderatorCommands)
   const streamerCommands = sanitizeCommandList(input.streamerCommands, DEFAULT_BOT_CONFIG.streamerCommands)
+
+  // Parse chatroomId - puede venir como number o string
+  let chatroomId = null
+  if (input.chatroomId) {
+    const parsed = parseInt(String(input.chatroomId), 10)
+    if (!isNaN(parsed) && parsed > 0) chatroomId = parsed
+  }
   
   return {
     enabled: Boolean(input.enabled),
     channel: typeof input.channel === 'string' ? input.channel.trim().replace(/^#/, '') : '',
+    chatroomId,
     prefix: typeof input.prefix === 'string' && input.prefix.trim().length > 0 ? input.prefix.trim() : '!',
     allowTtsFromChat: input.allowTtsFromChat !== false,
     allowCommandsFromMods: input.allowCommandsFromMods !== false,
