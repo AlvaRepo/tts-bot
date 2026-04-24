@@ -67,11 +67,21 @@ try {
       ws = new WebSocket(WEBSOCKET_URL)
 
       ws.onmessage = async (event) => {
+        // Debug: ver si llega algo
+        console.log('[ws-raw]', event.data.slice(0, 200))
+        
         const parsed = parsePusherMessage(event.data)
-        if (!parsed) return
+        if (!parsed) {
+          console.log('[ws-parse] failed')
+          return
+        }
+
+        console.log('[ws-msg] type:', parsed.type)
 
         if (parsed.type === 'ChatMessage') {
           const message = parsed.data
+          console.log('[ws-msg] full:', JSON.stringify(message).slice(0, 300))
+          
           let content = message.content || ''
           const username = message.sender?.username || message.user?.username || 'unknown'
           const role = inferRole(message)
@@ -79,10 +89,8 @@ try {
           // Limpiar contenido - trim y verificar que sea comando
           content = content.trim()
           
-          // Debug: mostrar primeros chars de cada mensaje con !
-          if (content.startsWith('!')) {
-            logger.log(`[kick-bot] cmd: "${content.slice(0, 30)}" @${username} role:${role}`)
-          }
+          // Debug: mostrar TODOS los mensajes
+          console.log('[ws-msg] content:', content, 'user:', username)
 
           updateBotRuntime({
             connected: true,
