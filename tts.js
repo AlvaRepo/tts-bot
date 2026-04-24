@@ -3,7 +3,7 @@ import { promisify } from 'util'
 import { existsSync, mkdirSync } from 'fs'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
-import { getTtsVoicePreference, getTtsPresetPreference, TTS_EMOTION_PRESETS } from './db.js'
+import { getTtsVoicePreference, getTtsPresetPreference, TTS_EMOTION_PRESETS } from './supabase-db.js'
 
 const execFileAsync = promisify(execFile)
 const CACHE_DIR = process.env.AUDIO_CACHE_DIR ?? './audio_cache'
