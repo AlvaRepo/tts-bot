@@ -1,4 +1,4 @@
-import { WebSocketConnection } from "kick_live_ws"
+import { createClient } from "@retconned/kick-js"
 
 function toBool(value) {
   if (typeof value === 'boolean') return value
@@ -13,76 +13,76 @@ export function createKickBotRunner({
   handleChatEvent,
   logger = console
 }) {
-  let connection = null
+  let client = null
   let started = false
   
   async function start() {
     const config = getKickBotConfig()
     const envEnabled = toBool(process.env.KICK_BOT_ENABLED)
     const enabled = config.enabled || envEnabled
-    
+    const channel = (process.env.KICK_BOT_CHANNEL ?? config.channel ?? '').trim().replace(/^#/, '')
+    const bearerToken = (process.env.KICK_BOT_BEARER ?? '').trim()
+    const cookies = (process.env.KICK_BOT_COOKIES ?? '').trim()
+      
     if (!enabled) {
       updateBotRuntime({ connected: false, lastError: null })
       return { started: false, reason: 'disabled' }
     }
-    
+      
+    if (!channel || !bearerToken || !cookies) {
+      updateBotRuntime({ connected: false, lastError: 'missing Kick bot env vars' })
+      return { started: false, reason: 'missing-env' }
+    }
+      
     try {
-      // Usar los IDs proporcionados por el usuario
-      connection = new WebSocketConnection({
-        name: "srtavodka",
-        chatroom_id: 5509024,
-        channel_id: 5538457
+      client = createClient(channel, { logger: false, readOnly: false })
+        
+      client.on?.('ready', () => {
+        started = true
+        updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
+        logger.log(`[kick-bot] ready on #${channel}`)
       })
-       
-      connection.connect()
-       
-      // Escuchar mensajes de chat (usar string 'chat' en lugar de MessageEvents)
-      connection.on('chat', (data) => {
+        
+      client.on?.('ChatMessage', async (message) => {
         try {
-          const username = data?.username || data?.sender?.username || 'unknown'
-          const content = data?.content || ''
-           
           updateBotRuntime({
             connected: true,
             lastSeenAt: Date.now(),
             lastEventAt: Date.now(),
-            lastChannel: "srtavodka",
-            lastUser: username,
-            lastContent: content,
-            lastError: null
+            lastChannel: channel,
+            lastUser: message?.sender?.username ?? message?.sender?.displayName ?? 'unknown',
+            lastContent: message?.content ?? ''
           })
-           
-          // Pasar el evento al router
-          handleChatEvent({
+            
+          await handleChatEvent({
             platform: 'kick',
-            channel: "srtavodka",
-            username: username,
-            role: data?.sender?.role || 'viewer',
-            content: content,
-            raw: data
+            channel,
+            username: message?.sender?.username ?? message?.sender?.displayName ?? 'unknown',
+            role: inferRole(message),
+            content: message?.content ?? '',
+            raw: message
           })
         } catch (error) {
           updateBotRuntime({ lastError: error.message })
           logger.error?.('[kick-bot] chat handler error', error)
         }
       })
-       
-      // Manejar errores de conexión
-      connection.on('error', (error) => {
-        updateBotRuntime({ connected: false, lastError: error?.message || String(error) })
-        logger.error?.('[kick-bot] connection error', error)
+        
+      client.on?.('error', (error) => {
+        updateBotRuntime({ connected: false, lastError: error?.message ?? String(error) })
+        logger.error?.('[kick-bot] client error', error)
       })
-       
-      connection.on('disconnect', () => {
-        updateBotRuntime({ connected: false })
-        logger.log?.('[kick-bot] disconnected')
+        
+      await client.login({
+        type: 'tokens',
+        credentials: {
+          bearerToken,
+          cookies
+        }
       })
-       
-      started = true
+        
       updateBotRuntime({ connected: true, lastSeenAt: Date.now(), lastError: null })
-      logger.log?.('[kick-bot] connected to #srtavodka')
-       
-      return { started: true, channel: "srtavodka" }
+      return { started: true, channel }
     } catch (error) {
       updateBotRuntime({ connected: false, lastError: error.message })
       logger.error?.('[kick-bot] failed to start:', error)
@@ -90,24 +90,53 @@ export function createKickBotRunner({
     }
   }
   
+  function inferRole(message) {
+    const senderUsername = String(message?.sender?.username ?? message?.sender?.displayName ?? '').toLowerCase()
+    if (senderUsername === 'alvaftw') {
+      return 'superuser'
+    }
+      
+    const flags = [
+      message?.sender?.is_streamer,
+      message?.sender?.isOwner,
+      message?.sender?.is_owner,
+      message?.sender?.is_moderator,
+      message?.sender?.isModerator,
+      message?.sender?.role
+    ]
+      
+    if (flags.some(Boolean)) {
+      const role = String(message?.sender?.role ?? '').toLowerCase()
+      if (role.includes('mod')) return 'moderator'
+      if (role.includes('owner') || role.includes('streamer')) return 'streamer'
+      if (message?.sender?.is_streamer || message?.sender?.isOwner || message?.sender?.is_owner) return 'streamer'
+      if (message?.sender?.is_moderator || message?.sender?.isModerator) return 'moderator'
+      if (role.includes('vip') || message?.sender?.is_vip || message?.sender?.isVip) return 'vip'
+    }
+      
+    return 'viewer'
+  }
+  
   async function stop() {
     try {
-      if (connection) {
-        connection.close?.()
-        connection = null
-      }
+      await client?.disconnect?.()
+      await client?.logout?.()
+      await client?.close?.()
     } catch {}
     started = false
+    client = null
     updateBotRuntime({ connected: false })
     return { stopped: true }
   }
   
   async function sendChatMessage(text) {
     try {
-      if (connection && text) {
-        return { ok: false, error: 'sendMessage not available in kick_live_ws' }
+      const sendMessage = client?.sendMessage
+      if (typeof sendMessage === 'function') {
+        await sendMessage(text)
+        return { ok: true }
       }
-      return { ok: false, error: 'not connected' }
+      return { ok: false, error: 'sendMessage not available' }
     } catch (error) {
       return { ok: false, error: error.message }
     }
@@ -117,7 +146,7 @@ export function createKickBotRunner({
     start,
     stop,
     isStarted: () => started,
-    getClient: () => connection,
+    getClient: () => client,
     sendChatMessage
   }
 }
