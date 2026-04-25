@@ -72,24 +72,32 @@
     let endFallbackTimer = null
     let pendingPlayRetry = null
 
-    function show(text) {
-      box.textContent = text || ''
-      box.classList.add('show')
-    }
+    // === TEXT DISPLAY (currently disabled - uncomment to enable) ===
+    // function show(text) {
+    //   box.textContent = text || ''
+    //   box.classList.add('show')
+    // }
 
+    // function hide() {
+    //   box.classList.remove('show')
+    //   hint.classList.remove('show')
+    //   pokemonImg.classList.remove('show')
+    //   pokemonImg.removeAttribute('src')
+    //   currentId = null
+    //   clearTimeout(endFallbackTimer)
+    //   endFallbackTimer = null
+    //   clearTimeout(pendingPlayRetry)
+    //   pendingPlayRetry = null
+    //   player.pause()
+    //   player.removeAttribute('src')
+    //   player.load()
+    // }
+
+    // Dummy hide function (actual cleanup handled in finishCurrent)
     function hide() {
-      box.classList.remove('show')
-      hint.classList.remove('show')
       pokemonImg.classList.remove('show')
       pokemonImg.removeAttribute('src')
       currentId = null
-      clearTimeout(endFallbackTimer)
-      endFallbackTimer = null
-      clearTimeout(pendingPlayRetry)
-      pendingPlayRetry = null
-      player.pause()
-      player.removeAttribute('src')
-      player.load()
     }
 
     function clearEndFallback() {
@@ -158,7 +166,7 @@
           } else {
             pokemonImg.classList.remove('show')
             pokemonImg.removeAttribute('src')
-            show(data.text)
+            // show(data.text) // Texto deshabilitado - descomenta para habilitar
           }
           
           player.preload = 'auto'
