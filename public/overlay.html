@@ -24,6 +24,21 @@
       word-break: break-word;
     }
     #box.show { opacity: 1; transform: translateY(0); }
+    #pokemon-img {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 80vmin;
+      max-height: 80vmin;
+      object-fit: contain;
+      border-radius: 20px;
+      box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #pokemon-img.show { opacity: 1; }
     #hint {
       position: fixed;
       top: 12px;
@@ -43,12 +58,14 @@
 </head>
 <body>
   <div id="hint">Click para habilitar audio</div>
+  <img id="pokemon-img" alt="">
   <div id="box"></div>
   <audio id="player"></audio>
   <script>
     const box = document.getElementById('box')
     const hint = document.getElementById('hint')
     const player = document.getElementById('player')
+    const pokemonImg = document.getElementById('pokemon-img')
     let socket = null
     let reconnectTimer = null
     let currentId = null
@@ -63,6 +80,8 @@
     function hide() {
       box.classList.remove('show')
       hint.classList.remove('show')
+      pokemonImg.classList.remove('show')
+      pokemonImg.removeAttribute('src')
       currentId = null
       clearTimeout(endFallbackTimer)
       endFallbackTimer = null
@@ -130,6 +149,16 @@
         if (data.type === 'message:start') {
           currentId = data.id
           show(data.text)
+          
+          // Mostrar imagen si existe (ej. pokemon)
+          if (data.metadata?.image) {
+            pokemonImg.src = data.metadata.image
+            pokemonImg.classList.add('show')
+          } else {
+            pokemonImg.classList.remove('show')
+            pokemonImg.removeAttribute('src')
+          }
+          
           player.preload = 'auto'
           player.src = data.audioUrl
           player.load()

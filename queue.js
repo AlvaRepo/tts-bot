@@ -165,7 +165,8 @@ export class MessageQueue {
       text: msg.text,
       donor_name: msg.donor_name ?? null,
       amount: msg.amount ?? null,
-      audioUrl: `/audio/${msg.id}`
+      audioUrl: `/audio/${msg.id}`,
+      metadata: msg.metadata ?? null
     })
     updateMessage(msg.id, { status: 'PLAYING' })
     msg.status = 'PLAYING'

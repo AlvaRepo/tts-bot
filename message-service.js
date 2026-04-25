@@ -39,7 +39,8 @@ export function buildMessageRecord(body) {
     audio_path: null,
     created_at: Date.now(),
     updated_at: Date.now(),
-    error_msg: null
+    error_msg: null,
+    metadata: body.metadata ?? null
   }
 }
 
