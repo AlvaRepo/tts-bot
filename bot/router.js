@@ -18,7 +18,7 @@ export function createRouter(deps) {
   const { getConfig, updateRuntime, sendChatMessage, ...commandDeps } = deps
 
   async function handleEvent(event) {
-    const config = getConfig()
+    const config = await getConfig()
     const prefix = config.prefix ?? '!'
     const parsed = parseBotCommand(event.content ?? event.text ?? '', prefix)
 
