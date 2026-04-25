@@ -58,7 +58,7 @@
 </head>
 <body>
   <div id="hint">Click para habilitar audio</div>
-  <img id="pokemon-img" alt="">
+  <img id="pokemon-img" alt="pokemon" crossorigin="anonymous"></img>
   <div id="box"></div>
   <audio id="player"></audio>
   <script>
@@ -161,10 +161,12 @@
           
           // Si hay imagen (ej. pokemon), mostrar solo imagen, no texto
           if (data.metadata?.image) {
+            console.log('[overlay] showing image:', data.metadata.image)
+            pokemonImg.onload = () => console.log('[overlay] image loaded successfully')
+            pokemonImg.onerror = (e) => console.log('[overlay] image load error:', e)
             pokemonImg.src = data.metadata.image
             pokemonImg.classList.add('show')
-            //box.textContent = ''  // No mostrar texto cuando hay imagen
-            //box.classList.remove('show')
+            console.log('[overlay] pokemonImg src:', pokemonImg.src, 'has class show:', pokemonImg.classList.contains('show'))
           } else {
             pokemonImg.classList.remove('show')
             pokemonImg.removeAttribute('src')
