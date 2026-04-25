@@ -44,8 +44,11 @@ const DEFAULT_BOT_CONFIG = {
   allowTtsFromChat: true,
   allowCommandsFromMods: true,
   allowCommandsFromVip: true,
+  allowCommandsFromSubscribers: true,
   viewerCommands: ['tts', 'help', 'status'],
   moderatorCommands: ['tts', 'help', 'status', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore'],
+  subscriberCommands: ['tts', 'help', 'status'],
+  vipCommands: ['tts', 'help', 'status'],
   streamerCommands: ['tts', 'help', 'status', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore']
 }
 
