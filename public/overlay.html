@@ -95,8 +95,9 @@
 
     // Dummy hide function (actual cleanup handled in finishCurrent)
     function hide() {
-      pokemonImg.classList.remove('show')
-      pokemonImg.removeAttribute('src')
+      // Limpiar imagen
+      pokemonImg.style.display = ''
+      pokemonImg.src = ''
       currentId = null
     }
 
@@ -162,14 +163,21 @@
           console.log('[overlay] DEBUG: metadata is:', typeof data.metadata, 'value:', JSON.stringify(data.metadata))
           console.log('[overlay] DEBUG: image property:', data.metadata?.image)
           
-          // Si hay imagen (ej. pokemon), mostrar solo imagen, no texto
+          // Si hay imagen (ej. pokemon), mostrar inmediatamente sin transición
           if (data.metadata?.image) {
             console.log('[overlay] showing image:', data.metadata.image)
-            pokemonImg.onload = () => console.log('[overlay] image loaded successfully')
-            pokemonImg.onerror = (e) => console.log('[overlay] image load error:', e)
+            // Mostrar inmediatamente - no esperar load
+            pokemonImg.style.display = 'block'
+            pokemonImg.style.position = 'fixed'
+            pokemonImg.style.top = '50%'
+            pokemonImg.style.left = '50%'
+            pokemonImg.style.transform = 'translate(-50%, -50%)'
+            pokemonImg.style.maxWidth = '80vmin'
+            pokemonImg.style.maxHeight = '80vmin'
             pokemonImg.src = data.metadata.image
-            pokemonImg.classList.add('show')
-            console.log('[overlay] pokemonImg src:', pokemonImg.src, 'has class show:', pokemonImg.classList.contains('show'))
+            // Intentar cargar
+            pokemonImg.onload = () => console.log('[overlay] image loaded')
+            pokemonImg.onerror = (e) => console.log('[overlay] image error:', e)
           } else {
             pokemonImg.classList.remove('show')
             pokemonImg.removeAttribute('src')
