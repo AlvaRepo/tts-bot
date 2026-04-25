@@ -35,10 +35,10 @@
       object-fit: contain;
       border-radius: 20px;
       box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
-      opacity: 0;
-      transition: opacity 0.4s ease;
     }
-    #pokemon-img.show { opacity: 1; }
+    #pokemon-img.visible {
+      display: block;
+    }
     #hint {
       position: fixed;
       top: 12px;
@@ -96,7 +96,7 @@
     // Dummy hide function (actual cleanup handled in finishCurrent)
     function hide() {
       // Limpiar imagen
-      pokemonImg.style.display = ''
+      pokemonImg.classList.remove('visible')
       pokemonImg.src = ''
       currentId = null
     }
@@ -163,19 +163,12 @@
           console.log('[overlay] DEBUG: metadata is:', typeof data.metadata, 'value:', JSON.stringify(data.metadata))
           console.log('[overlay] DEBUG: image property:', data.metadata?.image)
           
-          // Si hay imagen (ej. pokemon), mostrar inmediatamente sin transición
+          // Si hay imagen (ej. pokemon), mostrar imagen
           if (data.metadata?.image) {
             console.log('[overlay] showing image:', data.metadata.image)
-            // Mostrar inmediatamente - no esperar load
-            pokemonImg.style.display = 'block'
-            pokemonImg.style.position = 'fixed'
-            pokemonImg.style.top = '50%'
-            pokemonImg.style.left = '50%'
-            pokemonImg.style.transform = 'translate(-50%, -50%)'
-            pokemonImg.style.maxWidth = '80vmin'
-            pokemonImg.style.maxHeight = '80vmin'
             pokemonImg.src = data.metadata.image
-            // Intentar cargar
+            pokemonImg.classList.add('visible')
+            console.log('[overlay] added visible class')
             pokemonImg.onload = () => console.log('[overlay] image loaded')
             pokemonImg.onerror = (e) => console.log('[overlay] image error:', e)
           } else {
