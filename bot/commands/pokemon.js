@@ -19,10 +19,15 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
 
     const data = await response.json()
     
-    // Obtener imagen oficial
-    const image = data.sprites?.other?.['official-artwork']?.front_default 
-      || data.sprites?.front_default 
-      || ''
+    // Intentar varias imágenes en orden de prioridad
+    const images = [
+      data.sprites?.other?.['official-artwork']?.front_default,
+      data.sprites?.other?.dream_world?.front_default,
+      data.sprites?.front_default,
+      data.sprites?.versions?.['generation-v']?.['black-white']?.animated?.front_default
+    ].filter(Boolean)
+
+    const image = images[0] || ''
 
     const result = {
       name: data.name,
@@ -34,7 +39,6 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
     const ttsMessage = result.name
     
     try {
-      // Encolar con metadata para mostrar imagen
       const enqueued = enqueueMessage({
         source: 'command',
         donor_name: 'pokemon',

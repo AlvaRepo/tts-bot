@@ -159,6 +159,9 @@
         if (data.type === 'message:start') {
           currentId = data.id
           
+          console.log('[overlay] DEBUG: metadata is:', typeof data.metadata, 'value:', JSON.stringify(data.metadata))
+          console.log('[overlay] DEBUG: image property:', data.metadata?.image)
+          
           // Si hay imagen (ej. pokemon), mostrar solo imagen, no texto
           if (data.metadata?.image) {
             console.log('[overlay] showing image:', data.metadata.image)
