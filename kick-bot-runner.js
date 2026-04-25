@@ -151,9 +151,8 @@ export function createKickBotRunner({
   }
 
 function inferRole(message) {
-  // Check for superuser/streamer first (by username)
-  const senderUsername = String(message.sender?.username || message.user?.username || '').toLowerCase()
-  if (senderUsername === 'alvaftw') return 'superuser'
+  // Los badges determinan el rol de la plataforma
+  // El superuser se determina en permissions.js usando config.superusers (no hardcodeado aquí)
   
   // Try to extract badges from multiple possible locations
   let badges = []

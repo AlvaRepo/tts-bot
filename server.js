@@ -28,7 +28,7 @@ import {
   setKickBotConfig
 } from './supabase-db.js'
 import { createMessageService } from './message-service.js'
-import { createKickBotCommandRouter } from './bot-command-router.js'
+import { createRouter } from './bot/router.js'
 import { createKickBotRunner } from './kick-bot-runner.js'
 import { createDonationWebhookRouter } from './webhooks/index.js'
 import { queue } from './queue.js'
@@ -65,18 +65,17 @@ function updateBotRuntime(patch) {
   Object.assign(botRuntime, patch)
 }
 
-const kickBotRouter = createKickBotCommandRouter({
+const kickBotRouter = createRouter({
+  getConfig: getKickBotConfig,
+  updateRuntime: updateBotRuntime,
+  sendChatMessage: (text) => kickBotRunner?.sendChatMessage?.(text),
   queue,
   enqueueMessage: messageService.enqueueMessage,
   getHistory,
   getMessage,
   deleteMessage,
-  getKickBotConfig,
-  getTtsVoicePreference,
   setTtsVoicePreference,
-  getTtsPresetPreference,
-  setTtsPresetPreference,
-  updateBotRuntime
+  setTtsPresetPreference
 })
 
 const kickBotRunner = createKickBotRunner({

@@ -41,15 +41,27 @@ const DEFAULT_BOT_CONFIG = {
   channel: '',
   chatroomId: null,
   prefix: '!',
+  superusers: ['alvaftw'],
+  
+  commandPermissions: {
+    help:    ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
+    status:  ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
+    tts:     ['subscriber', 'vip', 'moderator', 'streamer'],
+    voice:   ['vip', 'moderator', 'streamer'],
+    preset:  ['vip', 'moderator', 'streamer'],
+    skip:    ['moderator', 'streamer'],
+    replay:  ['moderator', 'streamer'],
+    delete:  ['moderator', 'streamer'],
+    cancel:  ['moderator', 'streamer'],
+    restore: ['moderator', 'streamer'],
+    pokemon: ['subscriber', 'vip', 'moderator', 'streamer']
+  },
+  
+  // Legacy fields (mantenidos para backward compatibility)
   allowTtsFromChat: true,
   allowCommandsFromMods: true,
   allowCommandsFromVip: true,
-  allowCommandsFromSubscribers: true,
-  viewerCommands: ['tts', 'help', 'status'],
-  moderatorCommands: ['tts', 'help', 'status', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore'],
-  subscriberCommands: ['tts', 'help', 'status'],
-  vipCommands: ['tts', 'help', 'status'],
-  streamerCommands: ['tts', 'help', 'status', 'skip', 'replay', 'voice', 'preset', 'cancel', 'delete', 'restore']
+  allowCommandsFromSubscribers: true
 }
 
 // Validación de UUID básica para evitar errores de PostgreSQL
@@ -360,12 +372,6 @@ export function sanitizeKickBotConfig(value) {
     ? safeJsonParse(value, {})
     : (value && typeof value === 'object' ? value : {})
   
-  const viewerCommands = sanitizeCommandList(input.viewerCommands, DEFAULT_BOT_CONFIG.viewerCommands)
-  const moderatorCommands = sanitizeCommandList(input.moderatorCommands, DEFAULT_BOT_CONFIG.moderatorCommands)
-  const subscriberCommands = sanitizeCommandList(input.subscriberCommands, DEFAULT_BOT_CONFIG.subscriberCommands)
-  const vipCommands = sanitizeCommandList(input.vipCommands, DEFAULT_BOT_CONFIG.vipCommands)
-  const streamerCommands = sanitizeCommandList(input.streamerCommands, DEFAULT_BOT_CONFIG.streamerCommands)
-
   // Parse chatroomId - puede venir como number o string
   let chatroomId = null
   if (input.chatroomId) {
@@ -373,21 +379,78 @@ export function sanitizeKickBotConfig(value) {
     if (!isNaN(parsed) && parsed > 0) chatroomId = parsed
   }
   
+  // Superusers desde config
+  const superusers = Array.isArray(input.superusers)
+    ? input.superusers.filter(u => typeof u === 'string').map(u => u.trim().toLowerCase())
+    : DEFAULT_BOT_CONFIG.superusers
+  
+  // Si existe commandPermissions, usar directamente
+  const hasCommandPermissions = input.commandPermissions && typeof input.commandPermissions === 'object'
+  
+  // Si NO existe commandPermissions pero existe estructura legacy, migrar automáticamente
+  let commandPermissions = hasCommandPermissions ? input.commandPermissions : {}
+  
+  if (!hasCommandPermissions) {
+    // Migrar desde estructura legacy
+    commandPermissions = migrateLegacyPermissions(input)
+  }
+  
   return {
     enabled: Boolean(input.enabled),
     channel: typeof input.channel === 'string' ? input.channel.trim().replace(/^#/, '') : '',
     chatroomId,
     prefix: typeof input.prefix === 'string' && input.prefix.trim().length > 0 ? input.prefix.trim() : '!',
+    superusers,
+    commandPermissions,
     allowTtsFromChat: input.allowTtsFromChat !== false,
     allowCommandsFromMods: input.allowCommandsFromMods !== false,
     allowCommandsFromVip: input.allowCommandsFromVip === true,
-    allowCommandsFromSubscribers: input.allowCommandsFromSubscribers !== false,
-    viewerCommands,
-    moderatorCommands,
-    subscriberCommands,
-    vipCommands,
-    streamerCommands
+    allowCommandsFromSubscribers: input.allowCommandsFromSubscribers !== false
   }
+}
+
+function migrateLegacyPermissions(input) {
+  const legacyPermissions = {}
+  
+  // Moderator commands
+  if (input.allowCommandsFromMods !== false && input.moderatorCommands?.length) {
+    for (const cmd of input.moderatorCommands) {
+      if (!legacyPermissions[cmd]) legacyPermissions[cmd] = []
+      if (!legacyPermissions[cmd].includes('moderator')) legacyPermissions[cmd].push('moderator')
+      if (!legacyPermissions[cmd].includes('streamer')) legacyPermissions[cmd].push('streamer')
+    }
+  }
+  
+  // VIP commands
+  if (input.allowCommandsFromVip && input.vipCommands?.length) {
+    for (const cmd of input.vipCommands) {
+      if (!legacyPermissions[cmd]) legacyPermissions[cmd] = []
+      if (!legacyPermissions[cmd].includes('vip')) legacyPermissions[cmd].push('vip')
+    }
+  }
+  
+  // Subscriber commands
+  if (input.allowCommandsFromSubscribers !== false && input.subscriberCommands?.length) {
+    for (const cmd of input.subscriberCommands) {
+      if (!legacyPermissions[cmd]) legacyPermissions[cmd] = []
+      if (!legacyPermissions[cmd].includes('subscriber')) legacyPermissions[cmd].push('subscriber')
+    }
+  }
+  
+  // Viewer commands
+  if (input.viewerCommands?.length) {
+    for (const cmd of input.viewerCommands) {
+      if (!legacyPermissions[cmd]) legacyPermissions[cmd] = []
+      if (!legacyPermissions[cmd].includes('viewer')) legacyPermissions[cmd].push('viewer')
+    }
+  }
+  
+  // Si no hay permisos legacy, usar defaults
+  if (Object.keys(legacyPermissions).length === 0) {
+    return DEFAULT_BOT_CONFIG.commandPermissions
+  }
+  
+  return legacyPermissions
 }
 
 // Funciones de webhook dedupe

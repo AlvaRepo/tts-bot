@@ -1,18 +1,26 @@
+// =========================
+// 1. HELPERS / NORMALIZACIÓN
+// =========================
+
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
 function normalizeRole(value) {
   const role = normalizeText(value).toLowerCase()
+
   if (['streamer', 'owner'].includes(role)) return 'streamer'
+  if (['superuser'].includes(role)) return 'superuser'
   if (['moderator', 'mod'].includes(role)) return 'moderator'
   if (['vip'].includes(role)) return 'vip'
-  if (['superuser'].includes(role)) return 'superuser'
+  if (['subscriber', 'sub'].includes(role)) return 'subscriber' // FIX
   return 'viewer'
 }
 
 function normalizeCommandName(command) {
   const value = normalizeText(command).toLowerCase()
+
+  // alias simples
   if (value.startsWith('voice') || value.startsWith('ttsvoice')) return 'voice'
   return value
 }
@@ -22,6 +30,7 @@ export function parseBotCommand(text, prefix = '!') {
   if (!raw.startsWith(prefix)) return null
 
   const [command, ...args] = raw.slice(prefix.length).split(/\s+/)
+
   return {
     command: command ? command.toLowerCase() : '',
     args: args.filter(Boolean),
@@ -29,233 +38,194 @@ export function parseBotCommand(text, prefix = '!') {
   }
 }
 
-export function createKickBotCommandRouter({
-  queue,
-  enqueueMessage,
-  getHistory,
-  getMessage,
-  deleteMessage,
-  getKickBotConfig,
-  setTtsVoicePreference,
-  getTtsPresetPreference,
-  setTtsPresetPreference,
-  updateBotRuntime,
-  sendChatMessage = null
-}) {
-    function canUseCommand(role, command, config, username = null) {
-      const normalizedCommand = normalizeCommandName(command)
-      const normalizedRole = normalizeRole(role)
-      const normalizedUsername = username ? String(username).toLowerCase().trim() : null
+// =========================
+// 2. PERMISOS (DATA-DRIVEN)
+// =========================
 
-      // Superuser bypass - check username directly
-      if (normalizedUsername === 'alvaftw') return true
+// Esperado desde Supabase o config externa:
+// {
+//   commandPermissions: {
+//     help: ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
+//     tts: ['subscriber', 'vip', 'moderator', 'streamer'],
+//     skip: ['moderator', 'streamer'],
+//     ...
+//   },
+//   superusers: ['alvaftw']
+// }
 
-      if (normalizedRole === 'superuser' || normalizedRole === 'streamer') return true
-      if (normalizedRole === 'moderator') {
-          if (!config.allowCommandsFromMods) return false
-          return (config.moderatorCommands ?? []).includes(normalizedCommand)
-      }
-      if (normalizedRole === 'vip') {
-          if (!config.allowCommandsFromVip) return false
-          return (config.vipCommands ?? []).includes(normalizedCommand)
-      }
-      if (normalizedRole === 'subscriber') {
-          if (!config.allowCommandsFromSubscribers) return false
-          return (config.subscriberCommands ?? []).includes(normalizedCommand)
-      }
-      // Deshabilitar comandos para espectadores regulares (viewers)
-      // Solo moderadores, suscriptores y VIPs pueden usar comandos
-      return false
+function canUseCommand({ role, username, command, config }) {
+  const normalizedRole = normalizeRole(role)
+  const normalizedCommand = normalizeCommandName(command)
+  const normalizedUsername = normalizeText(username).toLowerCase()
+
+  const superusers = new Set(
+    (config.superusers ?? []).map(u => normalizeText(u).toLowerCase())
+  )
+
+  // bypass limpio
+  if (superusers.has(normalizedUsername)) return true
+  if (['streamer', 'superuser'].includes(normalizedRole)) return true
+
+  const allowedRoles = config.commandPermissions?.[normalizedCommand] ?? []
+
+  return allowedRoles.includes(normalizedRole)
+}
+
+// =========================
+// 3. HANDLERS DE COMANDOS
+// =========================
+
+function createHandlers(deps) {
+  const {
+    queue,
+    enqueueMessage,
+    getHistory,
+    deleteMessage,
+    setTtsVoicePreference,
+    setTtsPresetPreference,
+    sendChatMessage
+  } = deps
+
+  const reply = async (text) => {
+    if (typeof sendChatMessage === 'function' && text) {
+      try { await sendChatMessage(text) } catch {}
     }
-
-  function resolveVoiceInput(parsed) {
-    if (!parsed) return ''
-
-    const command = parsed.command
-    const joinedArgs = parsed.args.join(' ').trim()
-
-    if (command === 'voice' || command === 'ttsvoice') {
-      return joinedArgs
-    }
-
-    for (const family of ['voice', 'ttsvoice']) {
-      if (command.startsWith(family) && command.length > family.length) {
-        const compact = command.slice(family.length)
-        return [compact, joinedArgs].filter(Boolean).join(' ').trim()
-      }
-    }
-
-    return ''
   }
 
-  function buildViewerHelpText(config, prefix) {
-    const commands = (config.viewerCommands ?? []).map(command => `${prefix}${command}`)
-    return `Comandos disponibles: ${commands.join(', ')}`
-  }
-
-  function findMessageByIdOrPrefix(idOrPrefix) {
+  const findMessage = (idOrPrefix) => {
     const needle = normalizeText(idOrPrefix)
     if (!needle) return null
     const history = getHistory(200)
-    return history.find(row => row.id === needle || row.id.startsWith(needle)) ?? null
+    return history.find(m => m.id === needle || m.id.startsWith(needle)) ?? null
   }
 
-  function lastMessage() {
-    const history = getHistory(200)
-    return history[0] ?? null
-  }
+  const lastMessage = () => getHistory(200)[0] ?? null
 
-  async function replyToChat(text) {
-    if (typeof sendChatMessage === 'function' && text) {
-      try {
-        await sendChatMessage(text)
-      } catch {}
+  return {
+    help: async ({ config, prefix, event }) => {
+      const cmds = Object.keys(config.commandPermissions ?? {})
+      await reply(`Comandos: ${cmds.map(c => `${prefix}${c}`).join(', ')}`)
+      return { handled: true, action: 'help' }
+    },
+
+    status: async () => {
+      const snap = queue.snapshot()
+      const msg = snap.state === 'playing'
+        ? `🎤 Reproduciendo | Cola: ${snap.pendingCount}`
+        : `🎤 Idle | Cola: ${snap.pendingCount}`
+      await reply(msg)
+      return { handled: true, action: 'status' }
+    },
+
+    skip: async () => {
+      queue.control('skip')
+      await reply('⏭️ skip')
+      return { handled: true, action: 'skip' }
+    },
+
+    tts: async ({ parsed, event }) => {
+      const text = parsed.args.join(' ').trim()
+      if (!text) return { handled: true, error: 'missing text' }
+
+      const result = enqueueMessage({
+        source: 'webhook',
+        donor_name: event?.username ?? null,
+        amount: null,
+        text
+      })
+
+      await reply(`🎤 en cola`)
+      return { handled: true, action: 'tts', id: result.id }
+    },
+
+    voice: async ({ parsed }) => {
+      const voice = parsed.args.join(' ').trim()
+      if (!voice) return { handled: true, error: 'missing voice' }
+
+      const saved = setTtsVoicePreference(voice)
+      return { handled: true, action: 'voice', voice: saved }
+    },
+
+    delete: async ({ parsed }) => {
+      const target = findMessage(parsed.args[0])
+      if (!target) return { handled: true, error: 'not found' }
+
+      queue.discard?.(target.id, 'DELETED')
+      deleteMessage(target.id)
+
+      await reply('🗑️ eliminado')
+      return { handled: true, action: 'delete' }
+    },
+
+    replay: async ({ parsed }) => {
+      const target = parsed.args[0] === 'last'
+        ? lastMessage()
+        : findMessage(parsed.args[0])
+
+      if (!target) return { handled: true, error: 'not found' }
+
+      const replay = enqueueMessage({ ...target })
+      await reply('🔄 replay')
+
+      return { handled: true, action: 'replay', id: replay.id }
     }
   }
+}
+
+// =========================
+// 4. ROUTER PRINCIPAL
+// =========================
+
+export function createKickBotCommandRouter(deps) {
+  const {
+    getKickBotConfig,
+    updateBotRuntime
+  } = deps
+
+  const handlers = createHandlers(deps)
 
   async function handleEvent(event) {
     const config = getKickBotConfig()
     const prefix = config.prefix || '!'
+
     const content = normalizeText(event?.content ?? event?.text ?? '')
     const parsed = parseBotCommand(content, prefix)
 
     updateBotRuntime?.({
       lastEventAt: Date.now(),
-      lastChannel: normalizeText(event?.channel ?? ''),
       lastUser: normalizeText(event?.username ?? ''),
       lastContent: content
     })
 
     if (!parsed) {
-      console.log('[router] ignored - no command')
       return { handled: false, ignored: true }
     }
 
-    const canUse = canUseCommand(event?.role, parsed.command, config, event?.username)
-    console.log('[router] role:', event?.role, 'cmd:', parsed.command, 'allowed:', canUse)
+    const commandName = normalizeCommandName(parsed.command)
 
-    if (!canUse) {
-      return { handled: true, denied: true, action: parsed.command }
+    const allowed = canUseCommand({
+      role: event?.role,
+      username: event?.username,
+      command: commandName,
+      config
+    })
+
+    if (!allowed) {
+      return { handled: true, denied: true, action: commandName }
     }
 
-    const voiceInput = resolveVoiceInput(parsed)
-    if (voiceInput || parsed.command === 'voice' || parsed.command === 'ttsvoice') {
-      if (!voiceInput) return { handled: true, action: 'voice', error: 'missing voice' }
-      const saved = setTtsVoicePreference(voiceInput)
-      return { handled: true, action: 'voice', voice: saved }
+    const handler = handlers[commandName]
+
+    if (!handler) {
+      return { handled: true, error: 'unknown command', action: commandName }
     }
 
-    switch (parsed.command) {
-      case 'help': {
-        const spoken = buildViewerHelpText(config, prefix)
-        const result = enqueueMessage({
-          source: 'webhook',
-          donor_name: event?.username ?? null,
-          amount: null,
-          text: spoken
-        })
-        await replyToChat(`Comandos: ${(config.viewerCommands ?? []).join(', ')}`)
-        return {
-          handled: true,
-          action: 'help',
-          id: result.id,
-          message: spoken,
-          commands: (config.viewerCommands ?? []).map(command => `${prefix}${command}`)
-        }
-      }
-      case 'status': {
-        const snap = queue.snapshot()
-        const msg = snap.state === 'playing'
-          ? `🎤 Reproduciendo: "${snap.current?.text?.slice(0, 50) ?? ''}..." | Cola: ${snap.pendingCount}`
-          : `🎤 Idle | Cola: ${snap.pendingCount}`
-        await replyToChat(msg)
-        return { handled: true, action: 'status', queue: snap, config: getKickBotConfig() }
-      }
-      case 'skip':
-        queue.control('skip')
-        await replyToChat('⏭️ Mensaje saltado')
-        return { handled: true, action: 'skip' }
-      case 'replay': {
-        const target = parsed.args[0]?.toLowerCase() === 'last'
-          ? lastMessage()
-          : findMessageByIdOrPrefix(parsed.args[0] ?? '')
-        if (!target) {
-          await replyToChat('❌ Mensaje no encontrado')
-          return { handled: true, action: 'replay', error: 'not found' }
-        }
-        const replay = enqueueMessage({
-          source: target.source,
-          donor_name: target.donor_name,
-          amount: target.amount,
-          text: target.text
-        })
-        await replyToChat('🔄 Mensaje reencolado')
-        return { handled: true, action: 'replay', id: replay.id, replay_of: target.id }
-      }
-      case 'delete': {
-        const target = findMessageByIdOrPrefix(parsed.args[0] ?? '')
-        if (!target) {
-          await replyToChat('❌ Mensaje no encontrado')
-          return { handled: true, action: 'delete', error: 'not found' }
-        }
-        queue.discard?.(target.id, 'DELETED')
-        deleteMessage(target.id)
-        await replyToChat('🗑️ Mensaje eliminado')
-        return { handled: true, action: 'delete', id: target.id }
-      }
-      case 'cancel': {
-        const target = findMessageByIdOrPrefix(parsed.args[0] ?? '')
-        if (!target) {
-          await replyToChat('❌ Mensaje no encontrado')
-          return { handled: true, action: 'cancel', error: 'not found' }
-        }
-        queue.discard?.(target.id, 'CANCELLED_BY_BOT')
-        await replyToChat('🚫 Mensaje cancelado')
-        return { handled: true, action: 'cancel', id: target.id }
-      }
-      case 'restore': {
-        const target = findMessageByIdOrPrefix(parsed.args[0] ?? '')
-        if (!target) {
-          await replyToChat('❌ Mensaje no encontrado')
-          return { handled: true, action: 'restore', error: 'not found' }
-        }
-        const restored = enqueueMessage({
-          source: target.source,
-          donor_name: target.donor_name,
-          amount: target.amount,
-          text: target.text
-        })
-        await replyToChat('♻️ Mensaje restaurado a la cola')
-        return { handled: true, action: 'restore', id: restored.id, restored_from: target.id }
-      }
-      case 'preset': {
-        const preset = parsed.args[0] ?? ''
-        if (!preset) {
-          await replyToChat('❌ Falta nombre del preset')
-          return { handled: true, action: 'preset', error: 'missing preset' }
-        }
-        const saved = setTtsPresetPreference(preset)
-        await replyToChat(`🎭 Preset cambiado a: ${saved}`)
-        return { handled: true, action: 'preset', preset: saved }
-      }
-      case 'tts': {
-        const text = parsed.args.join(' ').trim()
-        if (!text) {
-          await replyToChat('❌ Falta texto para reproducir')
-          return { handled: true, action: 'tts', error: 'missing text' }
-        }
-        const result = enqueueMessage({
-          source: 'webhook',
-          donor_name: event?.username ?? null,
-          amount: null,
-          text
-        })
-        await replyToChat(`🎤 "${text.slice(0, 100)}" en cola`)
-        return { handled: true, action: 'tts', id: result.id }
-      }
-      default:
-        return { handled: true, action: parsed.command, error: 'unknown command' }
-    }
+    return handler({
+      event,
+      parsed,
+      config,
+      prefix
+    })
   }
 
   return { handleEvent }
