@@ -3,7 +3,7 @@
 // =============================
 
 import { parseBotCommand } from './parser.js'
-import { canUseCommand } from './permissions.js'
+import { canUseCommand, normalizeRole } from './permissions.js'
 import { commandHandlers } from './commands/index.js'
 
 function createReply(sendChatMessage) {
@@ -32,6 +32,15 @@ export function createRouter(deps) {
       console.log('[router] ignored - no command')
       return { handled: false, ignored: true }
     }
+
+    // DEBUG: Show config being used
+    console.log('[router] DEBUG config:', JSON.stringify({
+      superusers: config.superusers,
+      ttsPerms: config.commandPermissions?.tts
+    }))
+
+    const normalizedRole = normalizeRole(event.role)
+    console.log('[router] DEBUG normalizedRole:', event.role, '→', normalizedRole)
 
     const allowed = canUseCommand({
       role: event.role,
