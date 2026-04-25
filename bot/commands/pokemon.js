@@ -27,14 +27,11 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
     const result = {
       name: data.name,
       id: data.id,
-      types: data.types.map(t => t.type.name).join(', '),
-      height: data.height / 10,
-      weight: data.weight / 10,
-      abilities: data.abilities.map(a => a.ability.name).join(', '),
       image: image
     }
 
-    const ttsMessage = `${result.name} tipo ${result.types}. Altura ${result.height}m, peso ${result.weight}kg. Habilidades: ${result.abilities}`
+    // Solo dice el nombre
+    const ttsMessage = result.name
     
     // Encolar con metadata para mostrar imagen
     const enqueued = enqueueMessage({
@@ -45,7 +42,7 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
       metadata: { image: result.image }
     })
 
-    await reply(`🔍 #${result.id} ${result.name} - ${result.types}`)
+    await reply(`🔍 #${result.id} ${result.name}`)
 
     return {
       handled: true,
