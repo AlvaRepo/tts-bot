@@ -148,15 +148,17 @@
         const data = JSON.parse(event.data)
         if (data.type === 'message:start') {
           currentId = data.id
-          show(data.text)
           
-          // Mostrar imagen si existe (ej. pokemon)
+          // Si hay imagen (ej. pokemon), mostrar solo imagen, no texto
           if (data.metadata?.image) {
             pokemonImg.src = data.metadata.image
             pokemonImg.classList.add('show')
+            //box.textContent = ''  // No mostrar texto cuando hay imagen
+            //box.classList.remove('show')
           } else {
             pokemonImg.classList.remove('show')
             pokemonImg.removeAttribute('src')
+            show(data.text)
           }
           
           player.preload = 'auto'
