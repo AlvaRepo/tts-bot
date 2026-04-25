@@ -33,23 +33,29 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
     // Solo dice el nombre
     const ttsMessage = result.name
     
-    // Encolar con metadata para mostrar imagen
-    const enqueued = enqueueMessage({
-      source: 'command',
-      donor_name: 'pokemon',
-      amount: null,
-      text: ttsMessage,
-      metadata: { image: result.image }
-    })
+    try {
+      // Encolar con metadata para mostrar imagen
+      const enqueued = enqueueMessage({
+        source: 'command',
+        donor_name: 'pokemon',
+        amount: null,
+        text: ttsMessage,
+        metadata: { image: result.image }
+      })
 
-    await reply(`🔍 #${result.id} ${result.name}`)
+      await reply(`🔍 #${result.id} ${result.name}`)
 
-    return {
-      handled: true,
-      action: 'pokemon',
-      data: result,
-      message: ttsMessage,
-      enqueued: enqueued?.id
+      return {
+        handled: true,
+        action: 'pokemon',
+        data: result,
+        message: ttsMessage,
+        enqueued: enqueued?.id
+      }
+    } catch (enqueueError) {
+      console.error('[pokemon] enqueue error:', enqueueError.message)
+      await reply('❌ Error al encolar mensaje')
+      return { handled: true, error: enqueueError.message }
     }
   } catch (error) {
     await reply('❌ Error al buscar Pokémon')
