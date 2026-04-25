@@ -154,6 +154,8 @@
 
       socket.addEventListener('message', event => {
         const data = JSON.parse(event.data)
+        console.log('[overlay] received:', data.type, 'metadata:', data.metadata)
+        
         if (data.type === 'message:start') {
           currentId = data.id
           
