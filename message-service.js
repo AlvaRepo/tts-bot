@@ -17,7 +17,7 @@ export function validateMessagePayload(body, maxLength) {
   if (!body.text || typeof body.text !== 'string') return 'text es requerido'
   if (body.text.trim().length === 0) return 'text no puede estar vacío'
   if (body.text.length > maxLength) return `text excede ${maxLength} caracteres`
-  if (!['manual', 'webhook'].includes(body.source)) return 'source debe ser manual o webhook'
+  if (!['manual', 'webhook', 'command'].includes(body.source)) return 'source debe ser manual, webhook o command'
   if (body.donor_name !== undefined && body.donor_name !== null && typeof body.donor_name !== 'string') {
     return 'donor_name inválido'
   }
