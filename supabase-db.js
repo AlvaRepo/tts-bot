@@ -46,6 +46,8 @@ const DEFAULT_BOT_CONFIG = {
   commandPermissions: {
     help:    ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
     status:  ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
+    queue:   ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
+    voices:  ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
     tts:     ['subscriber', 'vip', 'moderator', 'streamer'],
     voice:   ['vip', 'moderator', 'streamer'],
     preset:  ['vip', 'moderator', 'streamer'],

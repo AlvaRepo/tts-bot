@@ -71,6 +71,13 @@
     let currentId = null
     let endFallbackTimer = null
     let pendingPlayRetry = null
+    let audioVolume = 1.0
+
+    // Fetch volume on load
+    fetch('/api/audio-volume')
+      .then(r => r.json())
+      .then(data => { audioVolume = data.volume ?? 1.0 })
+      .catch(() => {})
 
     // === TEXT DISPLAY (currently disabled - uncomment to enable) ===
     // function show(text) {
@@ -130,6 +137,7 @@
     function attemptPlay() {
       clearTimeout(pendingPlayRetry)
       pendingPlayRetry = null
+      player.volume = audioVolume
       void player.play().then(() => {
         hint.classList.remove('show')
       }).catch(error => {
