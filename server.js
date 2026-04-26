@@ -291,6 +291,34 @@ app.post('/api/bot/event', async (req, res) => {
   }
 })
 
+// OAuth endpoints for bot chat
+app.get('/api/bot/oauth-url', async (_req, res) => {
+  try {
+    const oauthData = await kickBotRunner.getOAuthUrl()
+    if (!oauthData) {
+      return res.status(400).json({ error: 'OAuth not configured' })
+    }
+    // Store codeVerifier temporarily (in production, use session/redis)
+    res.json({ url: oauthData.url, state: oauthData.state })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/bot/oauth-exchange', async (req, res) => {
+  try {
+    const { code, state, codeVerifier } = req.body
+    if (!code) {
+      return res.status(400).json({ error: 'Missing code' })
+    }
+    // In production, verify state matches and store codeVerifier securely
+    const result = await kickBotRunner.exchangeCode(code, codeVerifier)
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 app.get('/api/audio-profile', (_req, res) => {
   res.json({
     preference: currentAudioProfilePreference,
