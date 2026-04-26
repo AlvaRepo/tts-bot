@@ -315,12 +315,15 @@ app.get('/api/bot/oauth-url', async (_req, res) => {
 
 app.post('/api/bot/oauth-exchange', async (req, res) => {
   try {
-    const { code, state, codeVerifier } = req.body
+    const { code, codeVerifier } = req.body
+    console.log('[oauth-exchange] code:', code ? code.substring(0, 10) + '...' : 'missing')
+    console.log('[oauth-exchange] codeVerifier:', codeVerifier ? codeVerifier.substring(0, 10) + '...' : 'missing')
     if (!code) {
       return res.status(400).json({ error: 'Missing code' })
     }
-    // In production, verify state matches and store codeVerifier securely
+    // Try exchange - codeVerifier is optional now (will use stored if available)
     const result = await kickBotRunner.exchangeCode(code, codeVerifier)
+    console.log('[oauth-exchange] result:', JSON.stringify(result))
     res.json(result)
   } catch (error) {
     res.status(500).json({ error: error.message })
