@@ -52,16 +52,16 @@ function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
 
 // OAuth helpers - simplified, proper formatting
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
-  // URL encode the redirect_uri
-  const redirectUriEncoded = encodeURIComponent(redirectUri)
+  // Try WITHOUT encoding - some OAuth servers expect raw URL
+  const redirectUriRaw = redirectUri
   
   console.log('[OAuth buildOAuthUrl] Input redirectUri:', redirectUri)
-  console.log('[OAuth buildOAuthUrl] Encoded redirectUri:', redirectUriEncoded)
+  console.log('[OAuth buildOAuthUrl] Using RAW (not encoded):', redirectUriRaw)
   
   const url = new URL(`${KICK_OAUTH_BASE}/oauth/authorize`)
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set('redirect_uri', redirectUriEncoded)
+  url.searchParams.set('redirect_uri', redirectUriRaw)  // Raw - no encoding
   url.searchParams.set('scope', scope)
   url.searchParams.set('state', state)
   url.searchParams.set('code_challenge', codeChallenge)
@@ -73,11 +73,11 @@ function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
 }
 
 async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
-  // NOTE: redirectUri is already encoded from buildOAuthUrl - don't encode again!
-  // Just use it as-is since it's already in percent-encoded form
-  const redirectUriEncoded = redirectUri // Already encoded - no re-encoding!
+  // redirectUri is now raw (not encoded when building URL), encode it here for the token exchange
+  const redirectUriEncoded = encodeURIComponent(redirectUri)
   
-  console.log('[OAuth] exchangeCodeForToken - redirectUri:', redirectUri)
+  console.log('[OAuth exchangeCodeForToken] redirectUri (raw):', redirectUri)
+  console.log('[OAuth exchangeCodeForToken] redirectUri (encoded):', redirectUriEncoded)
   
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
