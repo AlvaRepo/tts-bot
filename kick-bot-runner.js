@@ -127,6 +127,9 @@ export function createKickBotRunner({
   // OAuth tokens (loaded from env or config)
   let accessToken = null
   let refreshTokenValue = null
+  
+  // Temporary storage for OAuth flow (cleared after use)
+  let pendingCodeVerifier = null
 
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
@@ -329,6 +332,10 @@ export function createKickBotRunner({
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
     
+    // Store for later use in exchangeCode
+    pendingCodeVerifier = codeVerifier
+    console.log('[OAuth] getOAuthUrl - stored codeVerifier:', codeVerifier.substring(0, 10) + '...')
+    
     // OAuth scopes: chat:write is REQUIRED to send messages
     const scopes = 'user:read channel:read chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
@@ -346,25 +353,30 @@ export function createKickBotRunner({
       console.log('[OAuth] exchangeCode - OAuth not configured, CLIENT_ID:', !!OAUTH_CLIENT_ID, 'SECRET:', !!OAUTH_CLIENT_SECRET)
       return { ok: false, error: 'OAuth not configured' }
     }
-    try {
-      console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
-      console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
-      console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
-      console.log('[OAuth] codeVerifier:', codeVerifier ? 'set' : 'NOT SET')
-      
-      const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, codeVerifier)
-      console.log('[OAuth] Token response:', JSON.stringify(result))
-      if (result.access_token) {
-        console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
-        accessToken = result.access_token
-        refreshTokenValue = result.refresh_token
-        return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
-      }
-      console.log('[OAuth] FAILED - no access_token in response')
-      return { ok: false, error: result.message || 'exchange failed' }
-    } catch (error) {
-      console.log('[OAuth] exchangeCode exception:', error.message)
-      return { ok: false, error: error.message }
+    
+    // Use provided codeVerifier or the one stored from OAuth URL generation
+    const verifier = codeVerifier || pendingCodeVerifier
+    console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
+    console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
+    console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
+    console.log('[OAuth] codeVerifier:', verifier ? 'set' : 'NOT SET')
+    
+    // Clear the stored verifier after use
+    pendingCodeVerifier = null
+    
+    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, verifier)
+    console.log('[OAuth] Token response:', JSON.stringify(result))
+    if (result.access_token) {
+      console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
+      accessToken = result.access_token
+      refreshTokenValue = result.refresh_token
+      return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
+    }
+    console.log('[OAuth] FAILED - no access_token in response')
+    return { ok: false, error: result.message || 'exchange failed' }
+  } catch (error) {
+    console.log('[OAuth] exchangeCode exception:', error.message)
+    return { ok: false, error: error.message }
     }
   }
 
