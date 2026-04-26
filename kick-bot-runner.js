@@ -67,11 +67,13 @@ function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
 }
 
 async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
+  const redirectUriEncoded = encodeURIComponent(redirectUri)
+  
   const params = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: clientId,
     client_secret: clientSecret,
-    redirect_uri: redirectUri,
+    redirect_uri: redirectUriEncoded,
     code,
     code_verifier: codeVerifier
   })
