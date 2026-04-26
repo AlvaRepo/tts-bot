@@ -37,6 +37,26 @@
   <script>
     let codeVerifier = null
     
+    // Check for code/error in URL on load
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get('code')
+      const error = params.get('error')
+      
+      if (error) {
+        document.getElementById('result').className = 'error'
+        document.getElementById('result').textContent = '❌ Error de OAuth: ' + error
+      }
+      
+      if (code) {
+        document.getElementById('codeInput').value = code
+        document.getElementById('result').className = 'success'
+        document.getElementById('result').textContent = '✅ Code recibido! Click en "Completar Setup" abaj'
+        document.getElementById('exchangeBtn').disabled = false
+        document.getElementById('exchangeBtn').textContent = 'Completar Setup'
+      }
+    })
+    
     async function startOAuth() {
       const btn = document.getElementById('authBtn')
       btn.disabled = true

@@ -50,12 +50,14 @@ function buildSendChatRequest(text, bearerToken) {
 
 // OAuth helpers
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
+  // Include state in URL for verification after redirect
+  const encodedState = Buffer.from(JSON.stringify({ state, redirectUri })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
     scope,
-    state,
+    state: encodedState,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256'
   })

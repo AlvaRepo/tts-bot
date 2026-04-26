@@ -407,6 +407,23 @@ app.get('/oauth-setup', (_req, res) => {
   res.type('html').sendFile(resolve('./public/oauth-setup.html'))
 })
 
+// OAuth callback handler - processes the authorization code
+app.get('/oauth/callback', (req, res) => {
+  const { code, error, state } = req.query
+  
+  if (error) {
+    return res.redirect(`/oauth-setup?error=${error}`)
+  }
+  
+  if (code) {
+    // Redirect to setup page with the code - user will paste it
+    return res.redirect(`/oauth-setup?code=${code}`)
+  }
+  
+  // No code, no error - just go to setup
+  res.redirect('/oauth-setup')
+})
+
 const server = app.listen(PORT, () => {
   console.log(`HTTP  → http://localhost:${PORT}`)
   console.log(`WS    → ws://localhost:${PORT}`)
