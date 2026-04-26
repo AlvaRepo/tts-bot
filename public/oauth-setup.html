@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAuth Setup - TTS Bot</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #111; color: #eee; }
+    h1 { color: #6366f1; }
+    button { background: #6366f1; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; margin: 8px 0; }
+    button:hover { background: #818cf8; }
+    button:disabled { background: #444; cursor: not-allowed; }
+    .step { background: #222; padding: 16px; border-radius: 8px; margin: 16px 0; }
+    .success { color: #22c55e; }
+    .error { color: #ef4444; }
+    #codeInput { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #1a1a1a; color: #fff; font-size: 16px; }
+    #result { white-space: pre-wrap; background: #000; padding: 16px; border-radius: 8px; margin-top: 16px; font-family: monospace; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>🤖 OAuth Setup para Bot</h1>
+  
+  <div class="step">
+    <p><strong>Paso 1:</strong> Hacé click en el botón de abajo para ir a Kick</p>
+    <button id="authBtn" onclick="startOAuth()">Autorizar en Kick</button>
+  </div>
+  
+  <div class="step">
+    <p><strong>Paso 2:</strong> Después de aprobar, copiá el "code" de la URL y pegalo acá:</p>
+    <input type="text" id="codeInput" placeholder="code=XXXXXXXXXXXXX">
+    <br><br>
+    <button id="exchangeBtn" onclick="exchangeCode()" disabled>Completar Setup</button>
+  </div>
+  
+  <div id="result"></div>
+  
+  <script>
+    let codeVerifier = null
+    
+    async function startOAuth() {
+      const btn = document.getElementById('authBtn')
+      btn.disabled = true
+      btn.textContent = 'Cargando...'
+      
+      try {
+        const res = await fetch('/api/bot/oauth-url')
+        const data = await res.json()
+        
+        if (data.url) {
+          // Guardar codeVerifier para después
+          codeVerifier = data.codeVerifier
+          // Abrir en nueva ventana
+          window.open(data.url, '_blank', 'width=500,height=600')
+          btn.textContent = 'Autorizado ✅ - Ahora pegá el code abajo'
+          document.getElementById('codeInput').focus()
+        } else {
+          btn.disabled = false
+          btn.textContent = 'Error: ' + (data.error || 'desconocido')
+        }
+      } catch (e) {
+        btn.disabled = false
+        btn.textContent = 'Error: ' + e.message
+      }
+    }
+    
+    async function exchangeCode() {
+      const code = document.getElementById('codeInput').value.trim()
+      const btn = document.getElementById('exchangeBtn')
+      const result = document.getElementById('result')
+      
+      if (!code) {
+        result.className = 'error'
+        result.textContent = 'Pegá el code primero'
+        return
+      }
+      
+      btn.disabled = true
+      btn.textContent = 'Procesando...'
+      
+      try {
+        // Extraer solo el code si vino con otros parámetros
+        const codeParam = code.includes('code=') 
+          ? code.split('code=')[1].split('&')[0] 
+          : code
+        
+        const res = await fetch('/api/bot/oauth-exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            code: codeParam,
+            codeVerifier: codeVerifier
+          })
+        })
+        const data = await res.json()
+        
+        if (data.ok) {
+          result.className = 'success'
+          result.textContent = '✅ ¡Listo! El bot ya puede escribir en el chat.\n\nToken: ' + (data.accessToken?.substring(0, 20) + '...')
+        } else {
+          result.className = 'error'
+          result.textContent = '❌ Error: ' + data.error
+          btn.disabled = false
+          btn.textContent = 'Reintentar'
+        }
+      } catch (e) {
+        result.className = 'error'
+        result.textContent = '❌ Error: ' + e.message
+        btn.disabled = false
+        btn.textContent = 'Reintentar'
+      }
+    }
+  </script>
+</body>
+</html>

@@ -403,6 +403,10 @@ app.get('/panel', (_req, res) => {
   res.type('html').sendFile(resolve('./public/panel.html'))
 })
 
+app.get('/oauth-setup', (_req, res) => {
+  res.type('html').sendFile(resolve('./public/oauth-setup.html'))
+})
+
 const server = app.listen(PORT, () => {
   console.log(`HTTP  → http://localhost:${PORT}`)
   console.log(`WS    → ws://localhost:${PORT}`)
