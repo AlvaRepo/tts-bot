@@ -48,57 +48,55 @@ function buildSendChatRequest(text, bearerToken) {
   }
 }
 
-// OAuth helpers - use space-separated scopes, URL encoded
+// OAuth helpers - simplified, proper formatting
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
-  // Encode each parameter properly
-  const scopeEncoded = encodeURIComponent(scope)
+  // URL encode the redirect_uri
   const redirectUriEncoded = encodeURIComponent(redirectUri)
   
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: clientId,
-    redirect_uri: redirectUriEncoded,
-    scope: scopeEncoded,
-    state: state,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256'
-  })
-  return `${KICK_OAUTH_BASE}/oauth/authorize?${params.toString()}`
+  const url = new URL(`${KICK_OAUTH_BASE}/oauth/authorize`)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', redirectUriEncoded)
+  url.searchParams.set('scope', scope)
+  url.searchParams.set('state', state)
+  url.searchParams.set('code_challenge', codeChallenge)
+  url.searchParams.set('code_challenge_method', 'S256')
+  
+  return url.toString()
 }
 
 async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
+  // URL encode the redirect_uri - MUST match exactly what was sent in authorize
   const redirectUriEncoded = encodeURIComponent(redirectUri)
   
-  const params = new URLSearchParams({
-    grant_type: 'authorization_code',
-    client_id: clientId,
-    client_secret: clientSecret,
-    redirect_uri: redirectUriEncoded,
-    code,
-    code_verifier: codeVerifier
-  })
+  const body = new URLSearchParams()
+  body.set('grant_type', 'authorization_code')
+  body.set('client_id', clientId)
+  body.set('client_secret', clientSecret)
+  body.set('redirect_uri', redirectUriEncoded)
+  body.set('code', code)
+  body.set('code_verifier', codeVerifier)
 
   const response = await fetch(`${KICK_OAUTH_BASE}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
+    body: body.toString()
   })
 
   return response.json()
 }
 
-async function refreshToken(refreshToken, clientId, clientSecret) {
-  const params = new URLSearchParams({
-    grant_type: 'refresh_token',
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: refreshToken
-  })
+async function refreshToken(refreshTokenValue, clientId, clientSecret) {
+  const body = new URLSearchParams()
+  body.set('grant_type', 'refresh_token')
+  body.set('client_id', clientId)
+  body.set('client_secret', clientSecret)
+  body.set('refresh_token', refreshTokenValue)
 
   const response = await fetch(`${KICK_OAUTH_BASE}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
+    body: body.toString()
   })
 
   return response.json()
