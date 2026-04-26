@@ -68,8 +68,11 @@ function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
 }
 
 async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
-  // URL encode the redirect_uri - MUST match exactly what was sent in authorize
-  const redirectUriEncoded = encodeURIComponent(redirectUri)
+  // NOTE: redirectUri is already encoded from buildOAuthUrl - don't encode again!
+  // Just use it as-is since it's already in percent-encoded form
+  const redirectUriEncoded = redirectUri // Already encoded - no re-encoding!
+  
+  console.log('[OAuth] exchangeCodeForToken - redirectUri:', redirectUri)
   
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
@@ -129,6 +132,11 @@ export function createKickBotRunner({
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI || `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
+  
+  console.log('[OAuth] Environment variables:')
+  console.log('[OAuth] CLIENT_ID:', OAUTH_CLIENT_ID ? 'set' : 'NOT SET')
+  console.log('[OAuth] CLIENT_SECRET:', OAUTH_CLIENT_SECRET ? 'set' : 'NOT SET')
+  console.log('[OAuth] REDIRECT_URI:', OAUTH_REDIRECT_URI)
   const BROADCASTER_USER_ID = process.env.KICK_CHANNEL_ID
 
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
