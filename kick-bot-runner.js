@@ -394,10 +394,6 @@ export function createKickBotRunner({
     
     console.log('[OAuth] FAILED - no access_token')
     return { ok: false, error: result2.message || 'exchange failed' }
-  } catch (error) {
-    console.log('[OAuth] exchangeCode exception:', error.message)
-    return { ok: false, error: error.message }
-    }
   }
 
 function inferRole(message) {
