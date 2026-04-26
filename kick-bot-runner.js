@@ -78,6 +78,7 @@ async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, c
   
   console.log('[OAuth exchangeCodeForToken] redirectUri (raw):', redirectUri)
   console.log('[OAuth exchangeCodeForToken] redirectUri (encoded):', redirectUriEncoded)
+  console.log('[OAuth exchangeCodeForToken] codeVerifier:', codeVerifier ? 'SET' : 'NULL')
   
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
@@ -85,7 +86,10 @@ async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, c
   body.set('client_secret', clientSecret)
   body.set('redirect_uri', redirectUriEncoded)
   body.set('code', code)
-  body.set('code_verifier', codeVerifier)
+  // Only add code_verifier if we have it
+  if (codeVerifier) {
+    body.set('code_verifier', codeVerifier)
+  }
 
   const response = await fetch(`${KICK_OAUTH_BASE}/oauth/token`, {
     method: 'POST',
@@ -359,21 +363,37 @@ export function createKickBotRunner({
     console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
     console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
     console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
-    console.log('[OAuth] codeVerifier:', verifier ? 'set' : 'NOT SET')
+    console.log('[OAuth] codeVerifier:', verifier ? 'SET' : 'NOT SET (will try without)')
     
     // Clear the stored verifier after use
     pendingCodeVerifier = null
     
-    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, verifier)
-    console.log('[OAuth] Token response:', JSON.stringify(result))
-    if (result.access_token) {
-      console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
-      accessToken = result.access_token
-      refreshTokenValue = result.refresh_token
-      return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
+    // Try with code_verifier if we have it
+    if (verifier) {
+      console.log('[OAuth] Trying with code_verifier...')
+      const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, verifier)
+      console.log('[OAuth] Token response:', JSON.stringify(result))
+      if (result.access_token) {
+        console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
+        accessToken = result.access_token
+        refreshTokenValue = result.refresh_token
+        return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
+      }
     }
-    console.log('[OAuth] FAILED - no access_token in response')
-    return { ok: false, error: result.message || 'exchange failed' }
+    
+    // If no verifier or failed, try WITHOUT code_verifier (some OAuth servers allow this)
+    console.log('[OAuth] Trying WITHOUT code_verifier...')
+    const result2 = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, null)
+    console.log('[OAuth] Token response (no verifier):', JSON.stringify(result2))
+    if (result2.access_token) {
+      console.log('[OAuth] SUCCESS - got access_token:', result2.access_token.substring(0, 20) + '...')
+      accessToken = result2.access_token
+      refreshTokenValue = result2.refresh_token
+      return { ok: true, accessToken: result2.access_token, refreshToken: result2.refresh_token }
+    }
+    
+    console.log('[OAuth] FAILED - no access_token')
+    return { ok: false, error: result2.message || 'exchange failed' }
   } catch (error) {
     console.log('[OAuth] exchangeCode exception:', error.message)
     return { ok: false, error: error.message }
