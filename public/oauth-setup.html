@@ -113,12 +113,14 @@
         })
         const data = await res.json()
         
+        console.log('Exchange result:', data) // Debug
+        
         if (data.ok) {
           result.className = 'success'
-          result.textContent = '✅ ¡Listo! El bot ya puede escribir en el chat.\n\nToken: ' + (data.accessToken?.substring(0, 20) + '...')
+          result.textContent = '✅ ¡Listo! El bot ya puede escribir en el chat.\n\nAccess Token: ' + (data.accessToken?.substring(0, 30) + '...')
         } else {
           result.className = 'error'
-          result.textContent = '❌ Error: ' + data.error
+          result.textContent = '❌ Error: ' + (data.error || JSON.stringify(data))
           btn.disabled = false
           btn.textContent = 'Reintentar'
         }
