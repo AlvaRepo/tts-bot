@@ -48,16 +48,18 @@ function buildSendChatRequest(text, bearerToken) {
   }
 }
 
-// OAuth helpers
+// OAuth helpers - use space-separated scopes, URL encoded
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
-  // Include state in URL for verification after redirect
-  const encodedState = Buffer.from(JSON.stringify({ state, redirectUri })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  // Encode each parameter properly
+  const scopeEncoded = encodeURIComponent(scope)
+  const redirectUriEncoded = encodeURIComponent(redirectUri)
+  
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
-    redirect_uri: redirectUri,
-    scope,
-    state: encodedState,
+    redirect_uri: redirectUriEncoded,
+    scope: scopeEncoded,
+    state: state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256'
   })
@@ -297,9 +299,14 @@ export function createKickBotRunner({
     const state = Math.random().toString(36).substring(2)
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
+    
+    // First try just user:read - simpler scope
+    // If that works, can add chat:write later
+    const scopes = 'user:read'
+    
     return {
-      url: buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, 'chat:write+user:read', state, codeChallenge),
-      codeVerifier, // Store this for later exchange
+      url: buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge),
+      codeVerifier,
       state
     }
   }
