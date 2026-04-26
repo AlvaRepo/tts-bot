@@ -128,15 +128,13 @@ export function createKickBotRunner({
   let accessToken = null
   let refreshTokenValue = null
 
-  // NEW TOKEN with chat:write scope (generated after bot was activated)
-  // This token was created on 2026-04-26 after fixing the issue
-  const FALLBACK_ACCESS_TOKEN = 'OWRJMJU1MDUTOGIZNY0ZYWMXLTLMZGMTYZI4MJQZOTZLNWU4'
-  const FALLBACK_REFRESH_TOKEN = 'NGI4ZJA5MDETYJVHYS01ZTA2LTHHZJKTMMI3ODJKNZY5NWI0'
-
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI || `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
+  
+  // Bearer token from env (optional - used when OAuth flow is not available)
+  const BEARER_TOKEN = process.env.KICK_BOT_BEARER
 
   console.log('[OAuth] Environment variables:')
   console.log('[OAuth] CLIENT_ID:', OAUTH_CLIENT_ID ? 'set: ' + OAUTH_CLIENT_ID.substring(0, 10) : 'NOT SET')
@@ -282,7 +280,7 @@ export function createKickBotRunner({
     }
 
     // Use environment token as fallback, or try OAuth
-    const token = accessToken || FALLBACK_ACCESS_TOKEN || process.env.KICK_BOT_BEARER
+    const token = accessToken || BEARER_TOKEN
     console.log('[sendChatMessage] Using token:', token ? token.substring(0, 20) + '...' : 'NULL')
     if (!token) {
       return { ok: false, error: 'no access token' }
