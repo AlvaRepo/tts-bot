@@ -316,7 +316,12 @@ export function createKickBotRunner({
       return { ok: false, error: 'OAuth not configured' }
     }
     try {
+      console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
+      console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
+      console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
+      
       const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, codeVerifier)
+      console.log('[OAuth] Token response:', JSON.stringify(result))
       if (result.access_token) {
         accessToken = result.access_token
         refreshTokenValue = result.refresh_token
