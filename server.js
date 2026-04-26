@@ -23,6 +23,8 @@ import {
   getTtsPresetPreference,
   setTtsPresetPreference,
   sanitizeTtsPresetPreference,
+  getAudioVolume,
+  setAudioVolume,
   TTS_EMOTION_PRESETS,
   getKickBotConfig,
   setKickBotConfig
@@ -343,6 +345,20 @@ app.get('/api/tts-preset', async (_req, res) => {
 app.post('/api/tts-preset', (req, res) => {
   const preset = setTtsPresetPreference(sanitizeTtsPresetPreference(req.body?.preset))
   res.json({ ok: true, preset, available: TTS_EMOTION_PRESETS })
+})
+
+app.get('/api/audio-volume', async (_req, res) => {
+  try {
+    const volume = await getAudioVolume()
+    res.json({ volume })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/audio-volume', (req, res) => {
+  const volume = setAudioVolume(req.body?.volume)
+  res.json({ ok: true, volume })
 })
 
 app.get('/audio/:id', (req, res) => {

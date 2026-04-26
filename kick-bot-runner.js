@@ -6,6 +6,22 @@ function toBool(value) {
   return false
 }
 
+const KICK_API_BASE = 'https://api.kick.com'
+
+function buildSendChatRequest(text) {
+  return {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.KICK_BOT_BEARER}`
+    },
+    body: JSON.stringify({
+      content: text,
+      type: 'bot'
+    })
+  }
+}
+
 export function createKickBotRunner({
   getKickBotConfig,
   setKickBotConfig,
@@ -146,8 +162,19 @@ export function createKickBotRunner({
   }
 
   async function sendChatMessage(text) {
-    // WebSocket nativo no puede enviar mensajes (solo recibe)
-    return { ok: false, error: 'sendMessage not supported (read-only)' }
+    if (!text || !started) return { ok: false, error: 'not connected' }
+
+    try {
+      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text))
+      const result = await response.json()
+
+      if (response.ok && result.data?.message_id) {
+        return { ok: true, messageId: result.data.message_id }
+      }
+      return { ok: false, error: result.message || 'send failed', details: result }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
   }
 
 function inferRole(message) {

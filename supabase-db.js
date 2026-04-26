@@ -348,6 +348,31 @@ export function sanitizeTtsPresetPreference(value) {
   return Object.prototype.hasOwnProperty.call(TTS_EMOTION_PRESETS, normalized) ? normalized : 'neutral'
 }
 
+// Funciones de volumen del audio
+export async function getAudioVolume() {
+  const value = await getSetting('audioVolume')
+  return sanitizeAudioVolume(value || 1.0)
+}
+
+export async function setAudioVolume(value) {
+  const sanitized = sanitizeAudioVolume(value)
+  await setSetting('audioVolume', String(sanitized))
+  return sanitized
+}
+
+export function sanitizeAudioVolume(value) {
+  if (typeof value === 'number') {
+    return Math.min(2.0, Math.max(0.0, value))
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value)
+    if (Number.isFinite(parsed)) {
+      return Math.min(2.0, Math.max(0.0, parsed))
+    }
+  }
+  return 1.0 // default
+}
+
 // Funciones de configuración del bot de Kick
 export async function getKickBotConfig() {
   const value = await getSetting('kickBotConfig')

@@ -3,34 +3,339 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Panel</title>
+  <title>TTS Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #111; color: #eee; }
-    h1, h2 { margin: 0 0 12px; }
-    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    .card { background: #171717; border: 1px solid #2a2a2a; border-radius: 14px; padding: 14px; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
-    input, button, select { padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #1c1c1c; color: #eee; }
-    textarea { padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #1c1c1c; color: #eee; width: 100%; min-height: 72px; resize: vertical; }
-    button { cursor: pointer; }
-    button:hover { background: #2a2a2a; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { border-bottom: 1px solid #333; padding: 8px; text-align: left; font-size: 14px; }
-    th { position: sticky; top: 0; background: #111; }
-    .pending { margin: 10px 0 18px; font-weight: bold; }
-    .muted { color: #9aa0a6; font-size: 13px; }
-    .statusline { display: flex; gap: 12px; flex-wrap: wrap; }
-    .field { display: flex; flex-direction: column; gap: 6px; min-width: 240px; }
-    .field small { color: #9aa0a6; }
-    .DONE { color: #6ee56e; }
-    .FAILED { color: #ff6b6b; }
-    .PLAYING { color: #f0d25c; }
-    .PAUSED { color: #ff9f43; }
-    .QUEUED, .SYNTHESIZING { color: #8aa6c1; }
-    .SKIPPED { color: #9aa0a6; }
-    .PENDING { color: #bbb; }
-    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .actions button { padding: 6px 9px; font-size: 12px; }
+    :root {
+      --bg-primary: #0d0d0d;
+      --bg-secondary: #161616;
+      --bg-tertiary: #1f1f1f;
+      --bg-card: #1a1a1a;
+      --bg-input: #242424;
+      --border-color: #2a2a2a;
+      --border-light: #3a3a3a;
+      --text-primary: #f5f5f5;
+      --text-secondary: #a1a1a;
+      --text-muted: #6b6b6b;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --accent-yellow: #eab308;
+      --accent-orange: #f97316;
+      --accent-blue: #3b82f6;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --font-sans: 'DM Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body { 
+      font-family: var(--font-sans); 
+      background: var(--bg-primary); 
+      color: var(--text-primary); 
+      min-height: 100vh;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    h1 { 
+      font-size: 28px; 
+      font-weight: 700; 
+      margin-bottom: 24px; 
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h1::before {
+      content: '';
+      width: 4px;
+      height: 28px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    h2 { 
+      font-size: 14px; 
+      font-weight: 600; 
+      text-transform: uppercase; 
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .grid { 
+      display: grid; 
+      gap: 20px; 
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); 
+    }
+
+    .card { 
+      background: var(--bg-card); 
+      border: 1px solid var(--border-color); 
+      border-radius: var(--radius); 
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .card.wide { grid-column: 1 / -1; }
+
+    .row { 
+      display: flex; 
+      gap: 12px; 
+      flex-wrap: wrap; 
+      margin-bottom: 16px; 
+      align-items: center; 
+    }
+
+    .row:last-child { margin-bottom: 0; }
+
+    input, button, select, textarea { 
+      padding: 10px 14px; 
+      border-radius: var(--radius-sm); 
+      border: 1px solid var(--border-color); 
+      background: var(--bg-input); 
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus, button:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+
+    textarea { 
+      width: 100%; 
+      min-height: 80px; 
+      resize: vertical; 
+      line-height: 1.5;
+    }
+
+    button { 
+      cursor: pointer; 
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    button:hover { 
+      background: var(--bg-tertiary); 
+      border-color: var(--border-light);
+    }
+
+    button:active { transform: scale(0.98); }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    select {
+      min-width: 140px;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Volume slider */
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+    }
+
+    .volume-control input[type="range"] {
+      flex: 1;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--bg-input);
+      border-radius: 3px;
+      border: none;
+      padding: 0;
+    }
+
+    .volume-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .volume-control input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+
+    .volume-value {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-secondary);
+      min-width: 42px;
+      text-align: right;
+    }
+
+    /* Status colors */
+    .DONE { color: var(--accent-green); }
+    .FAILED { color: var(--accent-red); }
+    .PLAYING { color: var(--accent-yellow); }
+    .PAUSED { color: var(--accent-orange); }
+    .QUEUED, .SYNTHESIZING { color: var(--accent-blue); }
+    .SKIPPED { color: var(--text-muted); }
+    .PENDING, .READY { color: var(--text-secondary); }
+
+    /* Table */
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin-top: 16px; 
+      font-size: 13px;
+    }
+
+    th, td { 
+      border-bottom: 1px solid var(--border-color); 
+      padding: 12px; 
+      text-align: left; 
+    }
+
+    th { 
+      position: sticky; 
+      top: 0; 
+      background: var(--bg-card);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+    }
+
+    tr:hover td { background: var(--bg-tertiary); }
+
+    /* Actions */
+    .actions { 
+      display: flex; 
+      gap: 6px; 
+      flex-wrap: wrap; 
+    }
+
+    .actions button { 
+      padding: 6px 10px; 
+      font-size: 11px;
+      border-radius: 6px;
+    }
+
+    /* Muted text */
+    .muted { 
+      color: var(--text-muted); 
+      font-size: 13px; 
+    }
+
+    .statusline { 
+      display: flex; 
+      gap: 16px; 
+      flex-wrap: wrap; 
+      font-size: 14px;
+    }
+
+    .field { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 6px; 
+      min-width: 200px;
+      flex: 1;
+    }
+
+    .field.small { min-width: 140px; flex: 0; }
+
+    .field small { 
+      color: var(--text-muted); 
+      font-size: 12px; 
+    }
+
+    /* Input group */
+    .input-group {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+      align-items: center;
+    }
+
+    .input-group input { flex: 1; }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* Checkbox styled */
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: var(--bg-input);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    input[type="checkbox"]:checked + .toggle {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    input[type="checkbox"]:checked + .toggle::after {
+      left: 23px;
+      background: white;
+    }
+
+    .pending { 
+      margin: 12px 0 20px; 
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    /* Section icons */
+    .section-icon {
+      width: 20px;
+      height: 20px;
+      margin-right: 8px;
+      opacity: 0.7;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      body { padding: 16px; }
+      .grid { grid-template-columns: 1fr; }
+      .card.wide { grid-column: 1; }
+    }
   </style>
 </head>
 <body>
@@ -64,6 +369,24 @@
       <div class="pending">Pendientes: <span id="pending">0</span></div>
       <div class="statusline muted" id="queueState"></div>
       <div class="muted" id="currentMessage"></div>
+    </section>
+
+    <section class="card">
+      <h2>Volumen</h2>
+      <div class="row">
+        <div class="volume-control">
+          <span class="muted">🔈</span>
+          <input type="range" id="volumeSlider" min="0" max="2" step="0.05" value="1">
+          <span class="volume-value" id="volumeValue">100%</span>
+          <span class="muted">🔊</span>
+        </div>
+      </div>
+      <div class="row">
+        <button id="volumeReset">Reset 100%</button>
+        <button id="volumeUp">+10%</button>
+        <button id="volumeDown">-10%</button>
+        <span id="volumeStatus" class="muted"></span>
+      </div>
     </section>
 
     <section class="card">
@@ -240,12 +563,16 @@
     const search = document.getElementById('search')
     const statusFilter = document.getElementById('statusFilter')
     const sourceFilter = document.getElementById('sourceFilter')
+    const volumeSlider = document.getElementById('volumeSlider')
+    const volumeValue = document.getElementById('volumeValue')
+    const volumeStatus = document.getElementById('volumeStatus')
 
     let autoRefreshTimer = null
     let filtersTimer = null
     let voiceTimer = null
     let presetTimer = null
     let botTimer = null
+    let volumeTimer = null
 
     async function postJSON(url, payload) {
       const res = await fetch(url, {
@@ -339,6 +666,20 @@
       ttsPreset.value = data.preset || 'neutral'
       const meta = presets[data.preset] || presets.neutral || {}
       presetStatus.textContent = `${meta.label || data.preset || 'neutral'} · ${meta.description || ''}`
+    }
+
+    async function refreshVolume() {
+      const data = await fetchJSON('/api/audio-volume')
+      const vol = data.volume ?? 1.0
+      volumeSlider.value = vol
+      volumeValue.textContent = `${Math.round(vol * 100)}%`
+      volumeStatus.textContent = `Volumen: ${Math.round(vol * 100)}%`
+    }
+
+    async function saveVolume(vol) {
+      const data = await postJSON('/api/audio-volume', { volume: vol })
+      volumeValue.textContent = `${Math.round(data.volume * 100)}%`
+      volumeStatus.textContent = `Guardado: ${Math.round(data.volume * 100)}%`
     }
 
     async function refreshBot() {
@@ -480,6 +821,31 @@
       presetTimer = setTimeout(savePreset, 120)
     })
 
+    // Volume control
+    volumeSlider.addEventListener('input', () => {
+      clearTimeout(volumeTimer)
+      volumeTimer = setTimeout(() => {
+        saveVolume(parseFloat(volumeSlider.value))
+      }, 150)
+    })
+
+    document.getElementById('volumeReset').addEventListener('click', () => {
+      volumeSlider.value = 1.0
+      saveVolume(1.0)
+    })
+
+    document.getElementById('volumeUp').addEventListener('click', () => {
+      const newVol = Math.min(2.0, parseFloat(volumeSlider.value) + 0.1)
+      volumeSlider.value = newVol
+      saveVolume(newVol)
+    })
+
+    document.getElementById('volumeDown').addEventListener('click', () => {
+      const newVol = Math.max(0.0, parseFloat(volumeSlider.value) - 0.1)
+      volumeSlider.value = newVol
+      saveVolume(newVol)
+    })
+
     ;[botEnabled, botChannel, botPrefix, botAllowTtsFromChat, botAllowCommandsFromMods, botAllowCommandsFromVip, botViewerCommands, botModeratorCommands, botStreamerCommands].forEach(el => {
       el.addEventListener('change', () => {
         clearTimeout(botTimer)
@@ -515,6 +881,7 @@
     refreshFilters()
     refreshVoice()
     refreshPreset()
+    refreshVolume()
     refreshBot()
 
     function escapeHtml(value) {
