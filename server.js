@@ -67,10 +67,13 @@ function updateBotRuntime(patch) {
   Object.assign(botRuntime, patch)
 }
 
+// Mutable reference para el runner - se setea después de crear el runner
+let kickBotRunnerRef = null
+
 const kickBotRouter = createRouter({
   getConfig: getKickBotConfig,
   updateRuntime: updateBotRuntime,
-  sendChatMessage: (text) => kickBotRunner?.sendChatMessage?.(text),
+  sendChatMessage: (text) => kickBotRunnerRef?.sendChatMessage?.(text),
   queue,
   enqueueMessage: messageService.enqueueMessage,
   getHistory,
@@ -85,9 +88,12 @@ const kickBotRunner = createKickBotRunner({
   setKickBotConfig,
   updateBotRuntime,
   handleChatEvent: kickBotRouter.handleEvent,
-  sendChatMessage: (text) => kickBotRunner.sendChatMessage?.(text),
+  sendChatMessage: (text) => kickBotRunnerRef?.sendChatMessage?.(text),
   logger: console
 })
+
+// Set the reference AFTER creating the runner
+kickBotRunnerRef = kickBotRunner
 
 let wss = null // Se inicializará cuando el servidor HTTP esté listo
 

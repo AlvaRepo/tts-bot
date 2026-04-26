@@ -1,0 +1,42 @@
+title: Improve Command Responses
+id: improve-command-responses-change
+status: draft
+owner: sdd-team
+scope: project
+summary: >
+  Rewrite command response messages to be user-friendly and explanatory,
+  with each command (except !pokemon) describing what it does.
+  Store in hybrid Engram + OpenSpec.
+requirements:
+- For every command handler (except !pokemon), the response payload must include:
+  - what_it_does: a concise natural-language description of the command's purpose
+  - usage_example: a short example invocation
+  - side_effects: a bullet describing expected state changes or outputs
+  - next_steps: suggested follow-up actions or hints
+  - tone: "friendly", "helpful", and non-technical language
+- Use a consistent template for all commands:
+  - sections: What it does, How to use, What you can expect, Examples
+- Ensure translation/localization hooks are planned (i18n keys, default en)
+- Maintain existing behavior for !pokemon (no change)
+- Data handling and security:
+  - Do not reveal secrets or sensitive data via responses
+  - When an error occurs, include a user-friendly explanation plus error code
+- Sane defaults for length and readability
+scenarios:
+- S1: Command "generate" now returns a response containing:
+  What it does: "Generates content based on provided input"
+  How to use: "generate <input>"
+  What you can expect: "A generated artifact is returned"
+  Examples: "generate Hello world"
+- S2: Command "status" returns:
+  What it does: "Reports the current system status"
+  How to use: "status"
+  What you can expect: "Status summary, uptime, and last run time"
+  Examples: "status"
+- S3: Command "!pokemon" remains unchanged
+- S4: Unknown command returns a generic explanation of how to use commands and where to find help
+open_questions:
+- Are there any commands that require per-command domain-specific terminology that must be preserved?
+- Should we store more metadata (e.g., command category) in the templates?
+notes:
+- This spec will feed into the code generator templates and test suites.

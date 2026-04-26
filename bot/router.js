@@ -8,8 +8,18 @@ import { commandHandlers } from './commands/index.js'
 
 function createReply(sendChatMessage) {
   return async function reply(text) {
+    console.log('[reply] text:', text)
+    console.log('[reply] sendChatMessage:', typeof sendChatMessage)
     if (typeof sendChatMessage === 'function' && text) {
-      try { await sendChatMessage(text) } catch {}
+      try { 
+        const result = await sendChatMessage(text)
+        console.log('[reply] result:', result)
+        return result
+      } catch (err) {
+        console.error('[reply] error:', err.message)
+      }
+    } else {
+      console.log('[reply] skipped - sendChatMessage is not a function or text is empty')
     }
   }
 }
@@ -62,13 +72,16 @@ export function createRouter(deps) {
 
     const reply = createReply(sendChatMessage)
 
-    return handler({
+    console.log('[router] calling handler for:', parsed.command)
+    const result = await handler({
       event,
       parsed,
       config,
       reply,
       ...commandDeps
     })
+    console.log('[router] handler result:', result)
+    return result
   }
 
   return { handleEvent }

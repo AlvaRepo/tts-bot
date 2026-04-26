@@ -12,13 +12,27 @@ export async function deleteHandler({ parsed, queue, deleteMessage, getHistory, 
   const target = findMessageByIdOrPrefix(getHistory(200), parsed.args[0])
 
   if (!target) {
-    await reply('❌ Mensaje no encontrado')
+    const response = `
+Que hace: Intenta eliminar un mensaje de la cola pero falla porque no se encontró el mensaje.
+Como usar: !delete <id o prefix del mensaje>
+Que esperar: Un mensaje de error indicando que no se encontró el mensaje especificado.
+Ejemplo: !delete abc123 -> "❌ Mensaje no encontrado"
+    `.trim()
+
+    await reply(response)
     return { handled: true, action: 'delete', error: 'not found' }
   }
 
   queue.discard?.(target.id, 'DELETED')
   deleteMessage(target.id)
 
-  await reply('🗑️ Mensaje eliminado')
+  const response = `
+Que hace: Elimina un mensaje específico de la cola de reproducción.
+Como usar: !delete <id o prefix del mensaje>
+Que esperar: El mensaje especificado se elimina de la cola y ya no será reproducido.
+Ejemplo: !delete abc123 -> "🗑️ Mensaje eliminado"
+  `.trim()
+
+  await reply(response)
   return { handled: true, action: 'delete', id: target.id }
 }

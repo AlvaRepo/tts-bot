@@ -34,17 +34,19 @@ async function generateCodeChallengeFromVerifier(verifier) {
   return base64URLEncode(hash)
 }
 
-function buildSendChatRequest(text, bearerToken) {
+function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
+  const body = { type: 'bot', content: text }
+  // Only add broadcaster_user_id if provided (needed for type: 'user', not for 'bot')
+  if (broadcasterUserId) {
+    body.broadcaster_user_id = broadcasterUserId
+  }
   return {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${bearerToken}`
     },
-    body: JSON.stringify({
-      content: text,
-      type: 'bot'
-    })
+    body: JSON.stringify(body)
   }
 }
 
@@ -118,10 +120,16 @@ export function createKickBotRunner({
   let accessToken = null
   let refreshTokenValue = null
 
+  // NEW TOKEN with chat:write scope (generated after bot was activated)
+  // This token was created on 2026-04-26 after fixing the issue
+  const FALLBACK_ACCESS_TOKEN = 'OWRJMJU1MDUTOGIZNY0ZYWMXLTLMZGMTYZI4MJQZOTZLNWU4'
+  const FALLBACK_REFRESH_TOKEN = 'NGI4ZJA5MDETYJVHYS01ZTA2LTHHZJKTMMI3ODJKNZY5NWI0'
+
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI || `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
+  const BROADCASTER_USER_ID = process.env.KICK_CHANNEL_ID
 
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
   const WEBSOCKET_URL = `wss://ws-us2.pusher.com/app/${PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0`
@@ -259,13 +267,16 @@ export function createKickBotRunner({
     }
 
     // Use environment token as fallback, or try OAuth
-    const token = accessToken || process.env.KICK_BOT_BEARER
+    const token = accessToken || FALLBACK_ACCESS_TOKEN || process.env.KICK_BOT_BEARER
     if (!token) {
       return { ok: false, error: 'no access token' }
     }
 
+    // Bot type doesn't need broadcaster_user_id (only user type needs it)
+    const broadcasterId = BROADCASTER_USER_ID || null
+
     try {
-      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token))
+      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token, broadcasterId))
       const result = await response.json()
 
       // If unauthorized, try to refresh token
@@ -275,7 +286,7 @@ export function createKickBotRunner({
           accessToken = refreshed.access_token
           refreshTokenValue = refreshed.refresh_token
           // Retry with new token
-          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, accessToken))
+          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, accessToken, broadcasterId))
           const retryResult = await retryResponse.json()
           if (retryResponse.ok && retryResult.data?.message_id) {
             return { ok: true, messageId: retryResult.data.message_id }
@@ -300,9 +311,8 @@ export function createKickBotRunner({
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
     
-    // First try just user:read - simpler scope
-    // If that works, can add chat:write later
-    const scopes = 'user:read'
+    // OAuth scopes: chat:write is REQUIRED to send messages
+    const scopes = 'user:read channel:read chat:write'
     
     return {
       url: buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge),

@@ -14,7 +14,14 @@ export async function replayHandler({ parsed, enqueueMessage, getHistory, reply 
     : findMessageByIdOrPrefix(getHistory(200), parsed.args[0])
 
   if (!target) {
-    await reply('❌ Mensaje no encontrado')
+    const response = `
+Que hace: Intenta reproducir nuevamente un mensaje anterior de la cola pero falla porque no se encontró el mensaje.
+Como usar: !replay <id o prefix del mensaje> o !replay last
+Que esperar: Un mensaje de error indicando que no se encontró el mensaje especificado.
+Ejemplo: !replay abc123 -> "❌ Mensaje no encontrado"
+    `.trim()
+
+    await reply(response)
     return { handled: true, action: 'replay', error: 'not found' }
   }
 
@@ -25,6 +32,13 @@ export async function replayHandler({ parsed, enqueueMessage, getHistory, reply 
     text: target.text
   })
 
-  await reply('🔄 Mensaje reencolado')
+  const response = `
+Que hace: Vuelve a colocar en cola un mensaje anterior para reproducirlo nuevamente.
+Como usar: !replay <id o prefix del mensaje> o !replay last
+Que esperar: El mensaje especificado se añade nuevamente al final de la cola de reproducción.
+Ejemplo: !replay last -> "🔄 Mensaje reencolado"
+  `.trim()
+
+  await reply(response)
   return { handled: true, action: 'replay', id: replay.id, replay_of: target.id }
 }
