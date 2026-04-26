@@ -263,11 +263,13 @@ export function createKickBotRunner({
 
     // Check if we have OAuth credentials
     if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
+      console.log('[sendChatMessage] OAuth not configured - missing CLIENT_ID or SECRET')
       return { ok: false, error: 'OAuth not configured' }
     }
 
     // Use environment token as fallback, or try OAuth
     const token = accessToken || FALLBACK_ACCESS_TOKEN || process.env.KICK_BOT_BEARER
+    console.log('[sendChatMessage] Using token:', token ? token.substring(0, 20) + '...' : 'NULL')
     if (!token) {
       return { ok: false, error: 'no access token' }
     }

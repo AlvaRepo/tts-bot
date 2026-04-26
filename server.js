@@ -300,9 +300,11 @@ app.post('/api/bot/event', async (req, res) => {
 // OAuth endpoints for bot chat
 app.get('/api/bot/oauth-url', async (_req, res) => {
   try {
+    console.log('[oauth] KICK_OAUTH_CLIENT_ID:', process.env.KICK_OAUTH_CLIENT_ID ? 'set' : 'NOT SET')
     const oauthData = await kickBotRunner.getOAuthUrl()
     if (!oauthData) {
-      return res.status(400).json({ error: 'OAuth not configured' })
+      console.log('[oauth] getOAuthUrl returned null')
+      return res.status(400).json({ error: 'OAuth not configured - check KICK_OAUTH_CLIENT_ID env var' })
     }
     // Store codeVerifier temporarily (in production, use session/redis)
     res.json({ url: oauthData.url, state: oauthData.state })
