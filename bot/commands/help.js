@@ -3,7 +3,7 @@
 // =============================
 
 export async function helpHandler({ config, reply }) {
-  const msg = "🎤 Comandos: !tts <texto> | !voice | !voices | !status"
+  const msg = "🎤 Comandos: !tts <texto> | !tomas | !elena | !dalia para mudar voz"
   const result = await reply(msg)
   return { handled: true, action: 'help' }
 }
@@ -16,18 +16,22 @@ const COMMAND_HELP = {
   help: 'Lista comandos básicos',
   helpextra: 'Todos los comandos',
   status: 'Estado del TTS',
-  tts: 'Agrega texto a la cola',
+  tts: '!tts hola (usa !tomas, !elena, !dalia para mudar voz)',
   voice: 'Cambia la voz',
   voices: 'Lista de voces',
   queue: 'Mensajes en cola'
 }
 
 export async function helpextraHandler({ config, reply }) {
-  const cmds = Object.keys(config.commandPermissions ?? {}).slice(0, 10)
-  const lines = cmds.map(cmd => {
-    const desc = COMMAND_HELP[cmd] || cmd
-    return `!${cmd}`
-  })
+  const lines = [
+    '!tts <texto> - Reproduce TTS',
+    '!tomas hola - TTS con voz de Tomas',
+    '!elena hola - TTS con voz de Elena',
+    '!dalia hola - TTS con voz de Dalia',
+    '!voice tomas - Cambia voz por defecto',
+    '!voices - Ver todas las voces',
+    '!status - Estado del bot'
+  ]
   await reply("📋 " + lines.join(' | '))
   return { handled: true, action: 'helpextra' }
 }
