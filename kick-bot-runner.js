@@ -143,7 +143,11 @@ export function createKickBotRunner({
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
-  const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI || `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
+  const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI 
+    ? (process.env.KICK_OAUTH_REDIRECT_URI.startsWith('http') 
+        ? process.env.KICK_OAUTH_REDIRECT_URI 
+        : `https://${process.env.KICK_OAUTH_REDIRECT_URI}`)
+    : `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
   const BEARER_TOKEN = process.env.KICK_BOT_BEARER
   const REFRESH_TOKEN_ENV = process.env.KICK_BOT_REFRESH_TOKEN
   const BROADCASTER_USER_ID = process.env.KICK_CHANNEL_ID
@@ -435,7 +439,11 @@ export function createKickBotRunner({
     lastCustomerCodeVerifier = codeVerifier
     
     // Usar redirect_uri específico para clientes
-    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI || `${OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')}`
+    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI 
+      ? (process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI.startsWith('http')
+          ? process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI
+          : `https://${process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI}`)
+      : OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')
     const scopes = 'user:read channel:read chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, customerRedirectUri, scopes, state, codeChallenge)
     
@@ -460,7 +468,11 @@ export function createKickBotRunner({
     }
 
     // Usar redirect_uri específico para clientes
-    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI || `${OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')}`
+    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI 
+      ? (process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI.startsWith('http')
+          ? process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI
+          : `https://${process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI}`)
+      : OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')
     
     const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, customerRedirectUri, verifier)
     
