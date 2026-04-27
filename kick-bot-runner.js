@@ -289,12 +289,24 @@ export function createKickBotRunner({
     if (!text || !started) return { ok: false, error: 'not connected' }
 
     const config = getKickBotConfig()
-    const token = accessToken || BEARER_TOKEN || config.sessionToken
-    if (!token) {
-      return { ok: false, error: 'no access token' }
+    let token = accessToken || BEARER_TOKEN || config.sessionToken
+    const broadcasterId = BROADCASTER_USER_ID || null
+
+    // If no access token but we have refresh token, try to get one now
+    if (!token && refreshTokenValue) {
+      console.log('[sendChatMessage] No access token, attempting refresh...')
+      const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
+      if (refreshed.access_token) {
+        accessToken = refreshed.access_token
+        refreshTokenValue = refreshed.refresh_token
+        token = accessToken
+        console.log('[sendChatMessage] Token refreshed successfully')
+      }
     }
 
-    const broadcasterId = BROADCASTER_USER_ID || null
+    if (!token) {
+      return { ok: false, error: 'no access token - complete OAuth setup' }
+    }
 
     try {
       const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token, broadcasterId))
