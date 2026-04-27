@@ -1,4 +1,4 @@
-// Kick bot usando WebSocket nativo - no requiere API externa
+// Kick bot usando WebSocket nativo - versión limpia
 
 function toBool(value) {
   if (typeof value === 'boolean') return value
@@ -30,13 +30,12 @@ function generateCodeVerifier() {
 }
 
 async function generateCodeChallengeFromVerifier(verifier) {
-  const hash = await sha256(verifier)
+  const hash = await sha256(Buffer.from(verifier))
   return base64URLEncode(hash)
 }
 
 function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
   const body = { type: 'bot', content: text }
-  // Only add broadcaster_user_id if provided (needed for type: 'user', not for 'bot')
   if (broadcasterUserId) {
     body.broadcaster_user_id = broadcasterUserId
   }
@@ -50,43 +49,28 @@ function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
   }
 }
 
-// OAuth helpers - simplified, proper formatting
+// OAuth helpers
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
-  // Try WITHOUT encoding - some OAuth servers expect raw URL
-  const redirectUriRaw = redirectUri
-  
-  console.log('[OAuth buildOAuthUrl] Input redirectUri:', redirectUri)
-  console.log('[OAuth buildOAuthUrl] Using RAW (not encoded):', redirectUriRaw)
-  
   const url = new URL(`${KICK_OAUTH_BASE}/oauth/authorize`)
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set('redirect_uri', redirectUriRaw)  // Raw - no encoding
+  url.searchParams.set('redirect_uri', redirectUri)
   url.searchParams.set('scope', scope)
   url.searchParams.set('state', state)
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
-  
-  console.log('[OAuth buildOAuthUrl] Final redirect_uri param:', url.searchParams.get('redirect_uri'))
-  
   return url.toString()
 }
 
-async function exchangeCodeForToken(code, clientId, redirectUri, codeVerifier) {
-  // redirectUri is now raw (not encoded when building URL), encode it here for the token exchange
+async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
   const redirectUriEncoded = encodeURIComponent(redirectUri)
-  
-  console.log('[OAuth exchangeCodeForToken] redirectUri (raw):', redirectUri)
-  console.log('[OAuth exchangeCodeForToken] redirectUri (encoded):', redirectUriEncoded)
-  console.log('[OAuth exchangeCodeForToken] codeVerifier:', codeVerifier ? 'SET' : 'NULL')
   
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
   body.set('client_id', clientId)
-  // PKCE flow: DO NOT send client_secret
+  body.set('client_secret', clientSecret)
   body.set('redirect_uri', redirectUriEncoded)
   body.set('code', code)
-  // Only add code_verifier if we have it (PKCE requirement)
   if (codeVerifier) {
     body.set('code_verifier', codeVerifier)
   }
@@ -97,17 +81,7 @@ async function exchangeCodeForToken(code, clientId, redirectUri, codeVerifier) {
     body: body.toString()
   })
 
-  // Debug: log the actual response before trying to parse
-  const responseText = await response.text()
-  console.log('[OAuth exchangeCodeForToken] Response status:', response.status)
-  console.log('[OAuth exchangeCodeForToken] Response body:', responseText)
-
-  try {
-    return JSON.parse(responseText)
-  } catch (e) {
-    console.log('[OAuth exchangeCodeForToken] Failed to parse JSON:', e.message)
-    return { error: 'invalid_response', message: responseText || 'empty response' }
-  }
+  return response.json()
 }
 
 async function refreshToken(refreshTokenValue, clientId, clientSecret) {
@@ -123,17 +97,7 @@ async function refreshToken(refreshTokenValue, clientId, clientSecret) {
     body: body.toString()
   })
 
-  // Debug: log the actual response
-  const responseText = await response.text()
-  console.log('[OAuth refreshToken] Response status:', response.status)
-  console.log('[OAuth refreshToken] Response body:', responseText.substring(0, 300))
-
-  try {
-    return JSON.parse(responseText)
-  } catch (e) {
-    console.log('[OAuth refreshToken] Failed to parse JSON:', e.message)
-    return { error: 'invalid_response', message: responseText || 'empty response' }
-  }
+  return response.json()
 }
 
 export function createKickBotRunner({
@@ -141,6 +105,7 @@ export function createKickBotRunner({
   setKickBotConfig,
   updateBotRuntime,
   handleChatEvent,
+  sendChatMessage: sendChatMessageFromOutside,
   logger = console
 }) {
   let ws = null
@@ -148,26 +113,15 @@ export function createKickBotRunner({
   let channel = null
   let chatroomId = null
 
-  // OAuth tokens (loaded from env or config)
+  // OAuth tokens
   let accessToken = null
   let refreshTokenValue = null
-  
-  // Temporary storage for OAuth flow (cleared after use)
-  let pendingCodeVerifier = null
 
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI || `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
-  
-  // Bearer token from env (optional - used when OAuth flow is not available)
   const BEARER_TOKEN = process.env.KICK_BOT_BEARER
-
-  console.log('[OAuth] Environment variables:')
-  console.log('[OAuth] CLIENT_ID:', OAUTH_CLIENT_ID ? 'set: ' + OAUTH_CLIENT_ID.substring(0, 10) : 'NOT SET')
-  console.log('[OAuth] CLIENT_SECRET:', OAUTH_CLIENT_SECRET ? 'set' : 'NOT SET')
-  console.log('[OAuth] REDIRECT_URI from env:', process.env.KICK_OAUTH_REDIRECT_URI ? 'set' : 'NOT SET')
-  console.log('[OAuth] REDIRECT_URI effective:', OAUTH_REDIRECT_URI)
   const BROADCASTER_USER_ID = process.env.KICK_CHANNEL_ID
 
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
@@ -194,6 +148,42 @@ export function createKickBotRunner({
     } catch {
       return null
     }
+  }
+
+  function inferRole(message) {
+    let badges = []
+    
+    if (message.sender?.identity?.badges) {
+      badges = message.sender?.identity?.badges
+    } else if (message.sender?.badges) {
+      badges = message.sender?.badges
+    } else if (message.user?.identity?.badges) {
+      badges = message.user?.identity?.badges
+    } else if (message.user?.badges) {
+      badges = message.user?.badges
+    } else if (message.badges) {
+      badges = message.badges
+    }
+    
+    const badgeTypes = badges.map(badge => {
+      if (badge?.type) return String(badge.type).toLowerCase()
+      if (badge?.text) return String(badge.text).toLowerCase()
+      if (badge?.label) return String(badge.label).toLowerCase()
+      if (typeof badge === 'string') return badge.toLowerCase()
+      if (badge && typeof badge === 'object') {
+        for (const key in badge) {
+          if (typeof badge[key] === 'string' && badge[key].trim().length > 0) {
+            return badge[key].toLowerCase()
+          }
+        }
+      }
+      return ''
+    }).filter(Boolean)
+    
+    if (badgeTypes.some(b => b.includes('vip'))) return 'vip'
+    if (badgeTypes.some(b => b.includes('moderator') || b.includes('mod'))) return 'moderator'
+    if (badgeTypes.some(b => b.includes('subscriber'))) return 'subscriber'
+    return 'viewer'
   }
 
   async function start() {
@@ -263,11 +253,9 @@ export function createKickBotRunner({
         started = false
       }
 
-      // Esperar a que conecte (timeout 10s)
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
         
-        // Sobrescribimos onopen para resolver la promesa cuando conecte
         const originalOnOpen = ws.onopen
         ws.onopen = () => {
           clearTimeout(timeout)
@@ -300,33 +288,22 @@ export function createKickBotRunner({
   async function sendChatMessage(text) {
     if (!text || !started) return { ok: false, error: 'not connected' }
 
-    // Check if we have OAuth credentials
-    if (!OAUTH_CLIENT_ID) {
-      console.log('[sendChatMessage] OAuth not configured - missing CLIENT_ID')
-      return { ok: false, error: 'OAuth not configured' }
-    }
-
-    // Use environment token as fallback, or try OAuth
     const token = accessToken || BEARER_TOKEN
-    console.log('[sendChatMessage] Using token:', token ? token.substring(0, 20) + '...' : 'NULL')
     if (!token) {
       return { ok: false, error: 'no access token' }
     }
 
-    // Bot type doesn't need broadcaster_user_id (only user type needs it)
     const broadcasterId = BROADCASTER_USER_ID || null
 
     try {
       const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token, broadcasterId))
       const result = await response.json()
 
-      // If unauthorized, try to refresh token
       if (response.status === 401 && refreshTokenValue) {
         const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
         if (refreshed.access_token) {
           accessToken = refreshed.access_token
           refreshTokenValue = refreshed.refresh_token
-          // Retry with new token
           const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, accessToken, broadcasterId))
           const retryResult = await retryResponse.json()
           if (retryResponse.ok && retryResult.data?.message_id) {
@@ -347,154 +324,34 @@ export function createKickBotRunner({
 
   // Expose OAuth helper methods
   async function getOAuthUrl() {
-    console.log('[OAuth] getOAuthUrl called, CLIENT_ID:', OAUTH_CLIENT_ID ? 'set' : 'NOT SET')
-    if (!OAUTH_CLIENT_ID) {
-      console.log('[OAuth] getOAuthUrl - no CLIENT_ID')
-      return null
-    }
+    if (!OAUTH_CLIENT_ID) return null
     const state = Math.random().toString(36).substring(2)
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
     
-    // Store verifier in state parameter (base64-encoded)
-    const stateWithVerifier = btoa(`${state}:${codeVerifier}`)
-    console.log('[OAuth] getOAuthUrl - stored codeVerifier in state')
-    
-    // OAuth scopes: chat:write is REQUIRED to send messages
     const scopes = 'user:read channel:read chat:write'
-    const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, stateWithVerifier, codeChallenge)
-    console.log('[OAuth] getOAuthUrl - URL built, scopes:', scopes)
+    const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
     
     return {
       url,
-      codeVerifier,  // Still return for immediate use if needed
-      state: stateWithVerifier
+      codeVerifier,
+      state
     }
   }
 
-async function exchangeCode(code, codeVerifier) {
-    if (!OAUTH_CLIENT_ID) {
-      console.log('[OAuth] exchangeCode - OAuth not configured, CLIENT_ID:', !!OAUTH_CLIENT_ID)
+  async function exchangeCode(code, codeVerifier) {
+    if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
       return { ok: false, error: 'OAuth not configured' }
     }
-    
-    // If no verifier passed, try to extract from state (which should be in the URL params)
-    // Actually, the verifier should be passed from the frontend
-    console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
-    console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
-    console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
-    console.log('[OAuth] codeVerifier passed:', codeVerifier ? 'SET' : 'NOT SET')
-    
-    // Try with provided verifier
-    const verifier = codeVerifier || pendingCodeVerifier
-    pendingCodeVerifier = null // Clear after use
-    
-    if (!verifier) {
-      console.log('[OAuth] No verifier available - trying without (may fail)')
-    }
-    
-    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, verifier)
-    console.log('[OAuth] Token response:', JSON.stringify(result))
+
+    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, codeVerifier)
     if (result.access_token) {
-      console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
       accessToken = result.access_token
       refreshTokenValue = result.refresh_token
       return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
     }
-    console.log('[OAuth] FAILED - no access_token in response')
     return { ok: false, error: result.message || 'exchange failed' }
-  } catch (error) {
-    console.log('[OAuth] exchangeCode exception:', error.message)
-    return { ok: false, error: error.message }
   }
-}
-    
-    // Use provided codeVerifier or the one stored from OAuth URL generation
-    const verifier = codeVerifier || pendingCodeVerifier
-    console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
-    console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
-    console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
-    console.log('[OAuth] codeVerifier:', verifier ? 'SET' : 'NOT SET (will try without)')
-    
-    // Clear the stored verifier after use
-    pendingCodeVerifier = null
-    
-    // Try with code_verifier if we have it
-    if (verifier) {
-      console.log('[OAuth] Trying with code_verifier...')
-      const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, verifier)
-      console.log('[OAuth] Token response:', JSON.stringify(result))
-      if (result.access_token) {
-        console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
-        accessToken = result.access_token
-        refreshTokenValue = result.refresh_token
-        return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
-      }
-    }
-    
-    // If no verifier or failed, try WITHOUT code_verifier (some OAuth servers allow this)
-    console.log('[OAuth] Trying WITHOUT code_verifier...')
-    const result2 = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, null)
-    console.log('[OAuth] Token response (no verifier):', JSON.stringify(result2))
-    if (result2.access_token) {
-      console.log('[OAuth] SUCCESS - got access_token:', result2.access_token.substring(0, 20) + '...')
-      accessToken = result2.access_token
-      refreshTokenValue = result2.refresh_token
-      return { ok: true, accessToken: result2.access_token, refreshToken: result2.refresh_token }
-    }
-    
-    console.log('[OAuth] FAILED - no access_token')
-    return { ok: false, error: result2.message || 'exchange failed' }
-  }
-
-function inferRole(message) {
-  // Los badges determinan el rol de la plataforma
-  // El superuser se determina en permissions.js usando config.superusers (no hardcodeado aquí)
-  
-  // Try to extract badges from multiple possible locations
-  let badges = []
-  
-  // Common Kick badge locations
-  if (message.sender?.identity?.badges) {
-    badges = message.sender?.identity?.badges
-  } else if (message.sender?.badges) {
-    badges = message.sender?.badges
-  } else if (message.user?.identity?.badges) {
-    badges = message.user?.identity?.badges
-  } else if (message.user?.badges) {
-    badges = message.user?.badges
-  } else if (message.badges) {
-    badges = message.badges
-  }
-  
-  // Extract badge identifiers with multiple fallback strategies
-  const badgeTypes = badges.map(badge => {
-    // Strategy 1: Check for type property
-    if (badge?.type) return String(badge.type).toLowerCase()
-    // Strategy 2: Check for text property  
-    if (badge?.text) return String(badge.text).toLowerCase()
-    // Strategy 3: Check for label property
-    if (badge?.label) return String(badge.label).toLowerCase()
-    // Strategy 4: Check if badge is already a string
-    if (typeof badge === 'string') return badge.toLowerCase()
-    // Strategy 5: Try to get any string property
-    if (badge && typeof badge === 'object') {
-      for (const key in badge) {
-        if (typeof badge[key] === 'string' && badge[key].trim().length > 0) {
-          return badge[key].toLowerCase()
-        }
-      }
-    }
-    return ''
-  }).filter(Boolean)
-  
-  // Priority: VIP > moderator > subscriber > viewer
-  if (badgeTypes.some(b => b.includes('vip'))) return 'vip'
-  if (badgeTypes.some(b => b.includes('moderator') || b.includes('mod'))) return 'moderator'
-  if (badgeTypes.some(b => b.includes('subscriber'))) return 'subscriber'
-  
-  return 'viewer'
-}
 
   return {
     start,
