@@ -35,16 +35,17 @@ async function generateCodeChallengeFromVerifier(verifier) {
 }
 
 function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
+  const body = { message: text }
+  if (broadcasterUserId) {
+    body.broadcaster_user_id = parseInt(broadcasterUserId, 10)
+  }
   return {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${bearerToken}`
     },
-    body: JSON.stringify({
-      message: text,
-      ...(broadcasterUserId ? { broadcaster_user_id: parseInt(broadcasterUserId, 10) } : {})
-    })
+    body: JSON.stringify(body)
   }
 }
 
@@ -289,40 +290,15 @@ export function createKickBotRunner({
     if (!text || !started) return { ok: false, error: 'not connected' }
 
     const config = getKickBotConfig()
-    let token = accessToken || BEARER_TOKEN || config.sessionToken
+    const token = accessToken || BEARER_TOKEN || config.sessionToken
+    if (!token) {
+      return { ok: false, error: 'no access token' }
+    }
+
     const broadcasterId = BROADCASTER_USER_ID || null
 
-    // Always use refresh token if available to get fresh access token
-    if (refreshTokenValue) {
-      const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
-      if (refreshed.access_token) {
-        accessToken = refreshed.access_token
-        refreshTokenValue = refreshed.refresh_token
-        token = accessToken
-      } else {
-        console.error('[kick] Token refresh failed:', refreshed)
-        return { ok: false, error: 'Token refresh failed', details: refreshed }
-      }
-    }
-
-    if (!token) {
-      return { ok: false, error: 'No auth token - complete OAuth setup' }
-    }
-
-    const requestBody = { message: text }
-    if (broadcasterId) {
-      requestBody.broadcaster_user_id = parseInt(broadcasterId, 10)
-    }
-
     try {
-      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(requestBody)
-      })
+      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token, broadcasterId))
       const result = await response.json()
 
       if (response.status === 401 && refreshTokenValue) {
@@ -330,14 +306,7 @@ export function createKickBotRunner({
         if (refreshed.access_token) {
           accessToken = refreshed.access_token
           refreshTokenValue = refreshed.refresh_token
-          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: JSON.stringify(requestBody)
-          })
+          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, accessToken, broadcasterId))
           const retryResult = await retryResponse.json()
           if (retryResponse.ok && retryResult.data?.message_id) {
             return { ok: true, messageId: retryResult.data.message_id }
@@ -365,8 +334,7 @@ export function createKickBotRunner({
     // Store for resilience if user reloads page
     lastCodeVerifier = codeVerifier
     
-    // Only request scopes that are actually needed
-    const scopes = 'chat:write'
+    const scopes = 'user:read channel:read chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
     
     return {
