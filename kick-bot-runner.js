@@ -14,6 +14,18 @@ function sanitizeMessage(text) {
     .substring(0, 300)
 }
 
+// Normalizar redirect URI - asegurar que tenga https:// correcto
+function normalizeUrl(uri) {
+  if (!uri) return null
+  // Limpiar cualquier duplicación de protocolos
+  let cleaned = uri.replace(/^https:\/+/i, 'https://').replace(/^http:\/+/i, 'https://')
+  // Si tiene solo una barra después de https:, agregar la segunda
+  if (cleaned.startsWith('https:/') && !cleaned.startsWith('https://')) {
+    cleaned = 'https://' + cleaned.substring(6)
+  }
+  return cleaned
+}
+
 const KICK_API_BASE = 'https://api.kick.com'
 const KICK_OAUTH_BASE = 'https://id.kick.com'
 
@@ -439,11 +451,9 @@ export function createKickBotRunner({
     lastCustomerCodeVerifier = codeVerifier
     
     // Usar redirect_uri específico para clientes
-    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI 
-      ? (process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI.startsWith('http')
-          ? process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI
-          : `https://${process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI}`)
-      : OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')
+    const baseRedirect = normalizeUrl(OAUTH_REDIRECT_URI)?.replace('/oauth/callback', '') || 'https://tts-bot-alva.onrender.com'
+    const customerRedirectUri = normalizeUrl(process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI) 
+      || `${baseRedirect}/oauth/customer-callback`
     const scopes = 'user:read channel:read chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, customerRedirectUri, scopes, state, codeChallenge)
     
@@ -468,11 +478,9 @@ export function createKickBotRunner({
     }
 
     // Usar redirect_uri específico para clientes
-    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI 
-      ? (process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI.startsWith('http')
-          ? process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI
-          : `https://${process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI}`)
-      : OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')
+    const baseRedirect = normalizeUrl(OAUTH_REDIRECT_URI)?.replace('/oauth/callback', '') || 'https://tts-bot-alva.onrender.com'
+    const customerRedirectUri = normalizeUrl(process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI) 
+      || `${baseRedirect}/oauth/customer-callback`
     
     const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, customerRedirectUri, verifier)
     
