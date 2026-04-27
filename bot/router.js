@@ -3,7 +3,7 @@
 // =============================
 
 import { parseBotCommand } from './parser.js'
-import { canUseCommand } from './permissions.js'
+import { canUseCommand, normalizeRole } from './permissions.js'
 import { commandHandlers } from './commands/index.js'
 
 function createReply(sendChatMessage) {
@@ -32,12 +32,15 @@ export function createRouter(deps) {
       return { handled: false, ignored: true }
     }
 
+    const role = normalizeRole(event.role)
     const allowed = canUseCommand({
       role: event.role,
       username: event.username,
       command: parsed.command,
       config
     })
+
+    console.log(`[router] "${parsed.command}" role=${role} allowed=${allowed}`)
 
     if (!allowed) {
       return { handled: true, denied: true, action: parsed.command }
