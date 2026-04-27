@@ -8,13 +8,7 @@ export async function statusHandler({ queue, reply }) {
     ? `🎤 Reproduciendo`
     : `🎤 Idle`
   
-  const response = `
-Que hace: Muestra el estado actual del bot de TTS.
-Como usar: Escribe !status en el chat.
-Que esperar: Información sobre si el bot está reproduciendo o inactivo, y cuántos elementos hay en la cola.
-Ejemplo: !status -> "${stateMessage} | Cola: ${snap.pendingCount}"
-  `.trim()
-
+  const response = `${stateMessage} | Cola: ${snap.pendingCount}`
   await reply(response)
   return { handled: true, action: 'status' }
 }

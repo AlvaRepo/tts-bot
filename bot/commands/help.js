@@ -3,10 +3,8 @@
 // =============================
 
 export async function helpHandler({ config, reply }) {
-  const msg = "test"
-  console.log('[help] msg:', msg)
+  const msg = "🎤 Comandos: !tts <texto> | !voice | !voices | !status"
   const result = await reply(msg)
-  console.log('[help] reply result:', JSON.stringify(result))
   return { handled: true, action: 'help' }
 }
 
@@ -15,32 +13,21 @@ export async function helpHandler({ config, reply }) {
 // =============================
 
 const COMMAND_HELP = {
-  help: 'Lista comandos disponibles',
-  helpextra: 'Info detallada de cada comando',
-  status: 'Muestra estado del TTS y cola',
-  tts: '!tts <texto> - Agrega texto a la cola',
-  voice: '!voice <nombre> - Cambia la voz',
-  voices: 'Lista voces disponibles',
-  queue: 'Muestra la cola de mensajes',
-  skip: 'Saltea el mensaje actual',
-  replay: '!replay [id] - Repite un mensaje',
-  delete: '!delete <id> - Borra un mensaje',
-  cancel: 'Cancela tu mensaje en cola',
-  restore: 'Restaura ultimo mensaje borrado',
-  preset: '!preset <nombre> - Guarda/carga preset',
-  quote: 'Quote random del chat',
-  randomquote: 'Quote random del chat',
-  lurk: 'Muestra que estas de Lurker',
-  pokemon: 'Datos de un Pokemon',
-  uptime: 'Tiempo del stream'
+  help: 'Lista comandos básicos',
+  helpextra: 'Todos los comandos',
+  status: 'Estado del TTS',
+  tts: 'Agrega texto a la cola',
+  voice: 'Cambia la voz',
+  voices: 'Lista de voces',
+  queue: 'Mensajes en cola'
 }
 
 export async function helpextraHandler({ config, reply }) {
-  const cmds = Object.keys(config.commandPermissions ?? {})
+  const cmds = Object.keys(config.commandPermissions ?? {}).slice(0, 10)
   const lines = cmds.map(cmd => {
-    const desc = COMMAND_HELP[cmd] || 'Sin descripcion'
-    return `!${cmd}: ${desc}`
+    const desc = COMMAND_HELP[cmd] || cmd
+    return `!${cmd}`
   })
-  await reply(lines.join(' | '))
+  await reply("📋 " + lines.join(' | '))
   return { handled: true, action: 'helpextra' }
 }
