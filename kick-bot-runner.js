@@ -288,7 +288,8 @@ export function createKickBotRunner({
   async function sendChatMessage(text) {
     if (!text || !started) return { ok: false, error: 'not connected' }
 
-    const token = accessToken || BEARER_TOKEN
+    const config = getKickBotConfig()
+    const token = accessToken || BEARER_TOKEN || config.sessionToken
     if (!token) {
       return { ok: false, error: 'no access token' }
     }

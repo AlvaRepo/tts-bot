@@ -444,6 +444,10 @@
           <label for="botPrefix">Prefijo</label>
           <input id="botPrefix" placeholder="!" maxlength="3">
         </div>
+        <div class="field">
+          <label for="botSessionToken">Session Token (cookie)</label>
+          <input id="botSessionToken" type="password" placeholder="session_token de cookies">
+        </div>
       </div>
       <div class="row">
         <label><input type="checkbox" id="botAllowTtsFromChat"> Permitir !tts desde chat</label>
@@ -553,6 +557,7 @@
     const botEnabled = document.getElementById('botEnabled')
     const botChannel = document.getElementById('botChannel')
     const botPrefix = document.getElementById('botPrefix')
+    const botSessionToken = document.getElementById('botSessionToken')
     const botAllowTtsFromChat = document.getElementById('botAllowTtsFromChat')
     const botAllowCommandsFromMods = document.getElementById('botAllowCommandsFromMods')
     const botAllowCommandsFromVip = document.getElementById('botAllowCommandsFromVip')
@@ -687,6 +692,7 @@
       botEnabled.checked = Boolean(data.enabled)
       botChannel.value = data.channel || ''
       botPrefix.value = data.prefix || '!'
+      botSessionToken.value = data.sessionToken || ''
       botAllowTtsFromChat.checked = data.allowTtsFromChat !== false
       botAllowCommandsFromMods.checked = data.allowCommandsFromMods !== false
       botAllowCommandsFromVip.checked = data.allowCommandsFromVip === true
@@ -723,6 +729,7 @@
         enabled: botEnabled.checked,
         channel: botChannel.value.trim(),
         prefix: botPrefix.value.trim() || '!',
+        sessionToken: botSessionToken.value.trim(),
         allowTtsFromChat: botAllowTtsFromChat.checked,
         allowCommandsFromMods: botAllowCommandsFromMods.checked,
         allowCommandsFromVip: botAllowCommandsFromVip.checked,

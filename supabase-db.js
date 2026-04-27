@@ -67,7 +67,8 @@ const DEFAULT_BOT_CONFIG = {
   allowTtsFromChat: true,
   allowCommandsFromMods: true,
   allowCommandsFromVip: true,
-  allowCommandsFromSubscribers: true
+  allowCommandsFromSubscribers: true,
+  sessionToken: ''
 }
 
 // Validación de UUID básica para evitar errores de PostgreSQL
@@ -436,7 +437,8 @@ export function sanitizeKickBotConfig(value) {
     allowTtsFromChat: input.allowTtsFromChat !== false,
     allowCommandsFromMods: input.allowCommandsFromMods !== false,
     allowCommandsFromVip: input.allowCommandsFromVip === true,
-    allowCommandsFromSubscribers: input.allowCommandsFromSubscribers !== false
+    allowCommandsFromSubscribers: input.allowCommandsFromSubscribers !== false,
+    sessionToken: typeof input.sessionToken === 'string' && input.sessionToken.trim().length > 0 ? input.sessionToken.trim() : ''
   }
 }
 
