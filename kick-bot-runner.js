@@ -296,22 +296,34 @@ export function createKickBotRunner({
   }
 
   async function sendChatMessage(text) {
-    console.log('[sendChatMessage] text:', text, 'started:', started)
-    if (!text || !started) return { ok: false, error: 'not connected' }
+    console.log('[sendChat] === START ===')
+    console.log('[sendChat] text:', text)
+    console.log('[sendChat] started:', started)
+    if (!text || !started) {
+      console.log('[sendChat] early return - no text or not started')
+      return { ok: false, error: 'not connected' }
+    }
 
     const config = getKickBotConfig()
     const token = accessToken || BEARER_TOKEN || config.sessionToken
+    console.log('[sendChat] has token:', !!token, 'token prefix:', token?.substring(0, 10))
     if (!token) {
+      console.log('[sendChat] no token')
       return { ok: false, error: 'no access token' }
     }
 
     const broadcasterId = BROADCASTER_USER_ID || null
+    console.log('[sendChat] broadcasterId:', broadcasterId)
 
     try {
-      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token, broadcasterId))
+      const requestOpts = buildSendChatRequest(text, token, broadcasterId)
+      console.log('[sendChat] request body:', requestOpts.body)
+      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, requestOpts)
       const result = await response.json()
+      console.log('[sendChat] status:', response.status, 'result:', JSON.stringify(result))
 
       if (response.status === 401 && refreshTokenValue) {
+        console.log('[sendChat] 401, trying refresh...')
         const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
         if (refreshed.access_token) {
           accessToken = refreshed.access_token
@@ -330,8 +342,10 @@ export function createKickBotRunner({
       }
       return { ok: false, error: result.message || 'send failed', details: result }
     } catch (error) {
+      console.log('[sendChat] exception:', error.message)
       return { ok: false, error: error.message }
     }
+  }
   }
 
   // Expose OAuth helper methods

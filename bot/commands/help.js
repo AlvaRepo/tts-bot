@@ -3,9 +3,10 @@
 // =============================
 
 export async function helpHandler({ config, reply }) {
-  console.log('[help] called')
-  await reply("test")
-  console.log('[help] reply called')
+  const msg = "test"
+  console.log('[help] msg:', msg)
+  const result = await reply(msg)
+  console.log('[help] reply result:', JSON.stringify(result))
   return { handled: true, action: 'help' }
 }
 
