@@ -8,8 +8,11 @@ import { commandHandlers } from './commands/index.js'
 
 function createReply(sendChatMessage) {
   return async function reply(text) {
+    console.log('[reply] sendChatMessage type:', typeof sendChatMessage)
     if (typeof sendChatMessage === 'function' && text) {
-      return sendChatMessage(text)
+      const result = await sendChatMessage(text)
+      console.log('[reply] result:', result)
+      return result
     }
   }
 }
