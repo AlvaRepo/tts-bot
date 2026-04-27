@@ -379,11 +379,15 @@ app.get('/api/bot/customer-oauth-url', async (_req, res) => {
 app.get('/oauth/customer-callback', async (req, res) => {
   const { code, error: oauthError, state } = req.query
   
+  console.log('[customer-callback] Incoming callback:', { code: code ? 'present' : 'missing', error: oauthError, state: state ? 'present' : 'missing' })
+  
   if (oauthError) {
+    console.error('[customer-callback] OAuth error:', oauthError)
     return res.redirect('/customer-connect?error=' + oauthError)
   }
   
   if (!code) {
+    console.error('[customer-callback] Missing code')
     return res.redirect('/customer-connect?error=missing_code')
   }
   
@@ -397,30 +401,66 @@ app.get('/oauth/customer-callback', async (req, res) => {
         codeVerifier = parts[1]
       }
     } catch (e) {
-      console.log('[customer-callback] Failed to parse state:', e.message)
+      console.error('[customer-callback] Failed to parse state:', e.message)
     }
   }
   
+  console.log('[customer-callback] codeVerifier:', codeVerifier ? 'present' : 'null')
+  
   try {
-    // Exchange code por tokens automáticamente en el servidor
+    // Intercambiar code por tokens para el cliente
     const result = await kickBotRunner.exchangeCustomerCode(code, codeVerifier)
     
+    console.log('[customer-callback] Exchange result:', JSON.stringify(result))
+    
     if (result.ok) {
-      console.log('[customer-callback] Customer connected, broadcasterId:', result.broadcasterId)
+      // Obtener datos adicionales del usuario
+      let username = null
+      let chatroomId = null
       
-      // Encriptar refresh_token
-      const encryptedRefreshToken = result.refreshToken ? encrypt(result.refreshToken) : null
+      try {
+        const userRes = await fetch('https://api.kick.com/public/v1/users/me', {
+          headers: { 'Authorization': `Bearer ${result.accessToken}` }
+        })
+        const userData = await userRes.json()
+        
+        console.log('[customer-callback] User data:', JSON.stringify(userData))
+        
+        username = userData?.data?.username || userData?.username || null
+        chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
+        
+        console.log('[customer-callback] Parsed username:', username, 'chatroomId:', chatroomId)
+      } catch (userErr) {
+        console.error('[customer-callback] Failed to fetch user data:', userErr.message)
+      }
       
       // Guardar tokens en config
       const currentConfig = await getKickBotConfig()
       await setKickBotConfig({
         ...currentConfig,
         customerAccessToken: result.accessToken,
-        customerRefreshToken: encryptedRefreshToken, // Encriptado
+        customerRefreshToken: result.refreshToken,
         customerBroadcasterId: result.broadcasterId,
-        customerUsername: result.username, // Nombre del canal del cliente
-        customerChatroomId: result.chatroomId // Chatroom ID para escribir en su chat
+        customerUsername: username,
+        customerChatroomId: chatroomId
       })
+      
+      // También guardar en memoria del runner
+      kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
+      
+      console.log('[customer-callback] Customer tokens saved successfully')
+      
+      res.redirect('/customer-connect?success=1')
+    } else {
+      console.error('[customer-callback] Exchange failed:', result.error)
+      res.redirect('/customer-connect?error=' + encodeURIComponent(result.error || 'exchange_failed'))
+    }
+  } catch (err) {
+    console.error('[customer-callback] Exception:', err.message)
+    console.error(err.stack)
+    res.redirect('/customer-connect?error=' + encodeURIComponent(err.message))
+  }
+})
       // También guardar en memoria del runner (sin encriptar, en memoria RAM)
       kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
       
