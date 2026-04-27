@@ -293,20 +293,19 @@ export function createKickBotRunner({
 
     // Always use refresh token if available to get fresh access token
     if (refreshTokenValue) {
-      console.log('[sendChatMessage] Refreshing token...')
       const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
       if (refreshed.access_token) {
         accessToken = refreshed.access_token
         refreshTokenValue = refreshed.refresh_token
         token = accessToken
-        console.log('[sendChatMessage] Token refreshed successfully')
       } else {
-        console.log('[sendChatMessage] Refresh failed:', refreshed.message || 'unknown error')
+        console.error('[kick] Token refresh failed:', refreshed)
+        return { ok: false, error: 'Token refresh failed', details: refreshed }
       }
     }
 
     if (!token) {
-      return { ok: false, error: 'no access token - complete OAuth setup' }
+      return { ok: false, error: 'No auth token - complete OAuth setup' }
     }
 
     const requestBody = { message: text }

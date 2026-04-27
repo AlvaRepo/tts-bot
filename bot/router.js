@@ -3,23 +3,13 @@
 // =============================
 
 import { parseBotCommand } from './parser.js'
-import { canUseCommand, normalizeRole } from './permissions.js'
+import { canUseCommand } from './permissions.js'
 import { commandHandlers } from './commands/index.js'
 
 function createReply(sendChatMessage) {
   return async function reply(text) {
-    console.log('[reply] text:', text)
-    console.log('[reply] sendChatMessage:', typeof sendChatMessage)
     if (typeof sendChatMessage === 'function' && text) {
-      try { 
-        const result = await sendChatMessage(text)
-        console.log('[reply] result:', result)
-        return result
-      } catch (err) {
-        console.error('[reply] error:', err.message)
-      }
-    } else {
-      console.log('[reply] skipped - sendChatMessage is not a function or text is empty')
+      return sendChatMessage(text)
     }
   }
 }
@@ -39,18 +29,8 @@ export function createRouter(deps) {
     })
 
     if (!parsed) {
-      console.log('[router] ignored - no command')
       return { handled: false, ignored: true }
     }
-
-    // DEBUG: Show config being used
-    console.log('[router] DEBUG config:', JSON.stringify({
-      superusers: config.superusers,
-      ttsPerms: config.commandPermissions?.tts
-    }))
-
-    const normalizedRole = normalizeRole(event.role)
-    console.log('[router] DEBUG normalizedRole:', event.role, '→', normalizedRole)
 
     const allowed = canUseCommand({
       role: event.role,
@@ -58,8 +38,6 @@ export function createRouter(deps) {
       command: parsed.command,
       config
     })
-
-    console.log('[router] role:', event.role, 'cmd:', parsed.command, 'allowed:', allowed)
 
     if (!allowed) {
       return { handled: true, denied: true, action: parsed.command }
@@ -71,17 +49,13 @@ export function createRouter(deps) {
     }
 
     const reply = createReply(sendChatMessage)
-
-    console.log('[router] calling handler for:', parsed.command)
-    const result = await handler({
+    return handler({
       event,
       parsed,
       config,
       reply,
       ...commandDeps
     })
-    console.log('[router] handler result:', result)
-    return result
   }
 
   return { handleEvent }
