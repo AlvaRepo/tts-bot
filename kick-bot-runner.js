@@ -365,7 +365,8 @@ export function createKickBotRunner({
     // Store for resilience if user reloads page
     lastCodeVerifier = codeVerifier
     
-    const scopes = 'user:read channel:read chat:write'
+    // Only request scopes that are actually needed
+    const scopes = 'chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
     
     return {
