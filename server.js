@@ -307,7 +307,7 @@ app.get('/api/bot/oauth-url', async (_req, res) => {
       return res.status(400).json({ error: 'OAuth not configured - check KICK_OAUTH_CLIENT_ID env var' })
     }
     // Store codeVerifier temporarily (in production, use session/redis)
-    res.json({ url: oauthData.url, state: oauthData.state })
+    res.json({ url: oauthData.url, state: oauthData.state, codeVerifier: oauthData.codeVerifier })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -429,11 +429,24 @@ app.get('/oauth/callback', (req, res) => {
   }
   
   if (code) {
-    // Redirect to setup page with the code - user will paste it
-    return res.redirect(`/oauth-setup?code=${code}`)
+    // Extract code_verifier from state (format: state:verifier)
+    let codeVerifier = null
+    if (state && state.includes(':')) {
+      try {
+        const decoded = Buffer.from(state, 'base64').toString()
+        const parts = decoded.split(':')
+        if (parts.length === 2) {
+          codeVerifier = parts[1]
+          console.log('[oauth/callback] Extracted code_verifier from state')
+        }
+      } catch (e) {
+        console.log('[oauth/callback] Failed to extract verifier from state:', e.message)
+      }
+    }
+    
+    return res.redirect(`/oauth-setup?code=${code}&verifier=${codeVerifier || ''}`)
   }
   
-  // No code, no error - just go to setup
   res.redirect('/oauth-setup')
 })
 
