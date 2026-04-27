@@ -72,7 +72,7 @@ function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
   return url.toString()
 }
 
-async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
+async function exchangeCodeForToken(code, clientId, redirectUri, codeVerifier) {
   // redirectUri is now raw (not encoded when building URL), encode it here for the token exchange
   const redirectUriEncoded = encodeURIComponent(redirectUri)
   
@@ -83,10 +83,10 @@ async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, c
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
   body.set('client_id', clientId)
-  body.set('client_secret', clientSecret)
+  // PKCE flow: DO NOT send client_secret
   body.set('redirect_uri', redirectUriEncoded)
   body.set('code', code)
-  // Only add code_verifier if we have it
+  // Only add code_verifier if we have it (PKCE requirement)
   if (codeVerifier) {
     body.set('code_verifier', codeVerifier)
   }
@@ -373,8 +373,8 @@ export function createKickBotRunner({
   }
 
   async function exchangeCode(code, codeVerifier) {
-    if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
-      console.log('[OAuth] exchangeCode - OAuth not configured, CLIENT_ID:', !!OAUTH_CLIENT_ID, 'SECRET:', !!OAUTH_CLIENT_SECRET)
+    if (!OAUTH_CLIENT_ID) {
+      console.log('[OAuth] exchangeCode - OAuth not configured, CLIENT_ID:', !!OAUTH_CLIENT_ID)
       return { ok: false, error: 'OAuth not configured' }
     }
     
@@ -391,7 +391,7 @@ export function createKickBotRunner({
     // Try with code_verifier if we have it
     if (verifier) {
       console.log('[OAuth] Trying with code_verifier...')
-      const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, verifier)
+      const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, verifier)
       console.log('[OAuth] Token response:', JSON.stringify(result))
       if (result.access_token) {
         console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
@@ -403,7 +403,7 @@ export function createKickBotRunner({
     
     // If no verifier or failed, try WITHOUT code_verifier (some OAuth servers allow this)
     console.log('[OAuth] Trying WITHOUT code_verifier...')
-    const result2 = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, null)
+    const result2 = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, null)
     console.log('[OAuth] Token response (no verifier):', JSON.stringify(result2))
     if (result2.access_token) {
       console.log('[OAuth] SUCCESS - got access_token:', result2.access_token.substring(0, 20) + '...')
