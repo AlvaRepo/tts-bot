@@ -35,7 +35,7 @@ async function generateCodeChallengeFromVerifier(verifier) {
 }
 
 function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
-  const body = { message: text }
+  const body = { content: text, type: 'bot' }
   if (broadcasterUserId) {
     body.broadcaster_user_id = parseInt(broadcasterUserId, 10)
   }
@@ -55,13 +55,10 @@ function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set('redirect_uri', redirectUri)
-  if (scope) {
-    url.searchParams.set('scope', scope)
-  }
+  url.searchParams.set('scope', scope)
   url.searchParams.set('state', state)
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
-  console.log('[OAuth URL]', url.toString())
   return url.toString()
 }
 
@@ -337,7 +334,7 @@ export function createKickBotRunner({
     // Store for resilience if user reloads page
     lastCodeVerifier = codeVerifier
     
-    const scopes = ''
+    const scopes = 'chat:write user:read'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
     
     return {
