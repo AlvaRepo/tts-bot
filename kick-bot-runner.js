@@ -63,13 +63,12 @@ function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
 }
 
 async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, codeVerifier) {
-  const redirectUriEncoded = encodeURIComponent(redirectUri)
-  
+  // IMPORTANT: redirect_uri must be sent as-is, NOT URL-encoded
   const body = new URLSearchParams()
   body.set('grant_type', 'authorization_code')
   body.set('client_id', clientId)
   body.set('client_secret', clientSecret)
-  body.set('redirect_uri', redirectUriEncoded)
+  body.set('redirect_uri', redirectUri)  // NOT encoded - per Kick docs
   body.set('code', code)
   if (codeVerifier) {
     body.set('code_verifier', codeVerifier)
@@ -116,6 +115,9 @@ export function createKickBotRunner({
   // OAuth tokens
   let accessToken = null
   let refreshTokenValue = null
+  
+  // Store last codeVerifier for resilience (survives page reloads)
+  let lastCodeVerifier = null
 
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
@@ -330,6 +332,9 @@ export function createKickBotRunner({
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
     
+    // Store for resilience if user reloads page
+    lastCodeVerifier = codeVerifier
+    
     const scopes = 'user:read channel:read chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
     
@@ -345,7 +350,13 @@ export function createKickBotRunner({
       return { ok: false, error: 'OAuth not configured' }
     }
 
-    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, codeVerifier)
+    // Use provided codeVerifier, or fall back to the last stored one
+    const verifier = codeVerifier || lastCodeVerifier
+    if (!verifier) {
+      return { ok: false, error: 'No code_verifier available. Please start OAuth flow again.' }
+    }
+
+    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, verifier)
     if (result.access_token) {
       accessToken = result.access_token
       refreshTokenValue = result.refresh_token
