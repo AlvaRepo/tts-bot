@@ -112,19 +112,17 @@ export function createKickBotRunner({
   let channel = null
   let chatroomId = null
 
-  // OAuth tokens
-  let accessToken = null
-  let refreshTokenValue = null
-  
-  // Store last codeVerifier for resilience (survives page reloads)
-  let lastCodeVerifier = null
-
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI || `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
   const BEARER_TOKEN = process.env.KICK_BOT_BEARER
+  const REFRESH_TOKEN_ENV = process.env.KICK_BOT_REFRESH_TOKEN
   const BROADCASTER_USER_ID = process.env.KICK_CHANNEL_ID
+  
+  // OAuth tokens - load from env if available (for persistence across restarts)
+  let accessToken = BEARER_TOKEN || null
+  let refreshTokenValue = REFRESH_TOKEN_ENV || null
 
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
   const WEBSOCKET_URL = `wss://ws-us2.pusher.com/app/${PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0`
