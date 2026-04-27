@@ -6,6 +6,14 @@ function toBool(value) {
   return false
 }
 
+function sanitizeMessage(text) {
+  if (!text) return ''
+  return text
+    .replace(/\n/g, ' ')
+    .replace(/[^\x00-\x7F]/g, '')
+    .substring(0, 300)
+}
+
 const KICK_API_BASE = 'https://api.kick.com'
 const KICK_OAUTH_BASE = 'https://id.kick.com'
 
@@ -35,7 +43,8 @@ async function generateCodeChallengeFromVerifier(verifier) {
 }
 
 function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
-  const body = { content: text, type: 'user' }
+  const sanitizedText = sanitizeMessage(text)
+  const body = { content: sanitizedText, type: 'user' }
   if (broadcasterUserId) {
     body.broadcaster_user_id = parseInt(broadcasterUserId, 10)
   }
