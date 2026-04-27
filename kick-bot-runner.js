@@ -308,9 +308,28 @@ export function createKickBotRunner({
       return { ok: false, error: 'no access token - complete OAuth setup' }
     }
 
+    const requestBody = { type: 'bot', content: text }
+    if (broadcasterId) {
+      requestBody.broadcaster_user_id = broadcasterId
+    }
+    console.log('[sendChatMessage] Sending:', {
+      token: token.substring(0, 20) + '...',
+      broadcasterId,
+      content: text.substring(0, 50)
+    })
+    console.log('[sendChatMessage] Full body:', JSON.stringify(requestBody))
+
     try {
-      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, token, broadcasterId))
+      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      })
       const result = await response.json()
+      console.log('[sendChatMessage] Response:', response.status, JSON.stringify(result))
 
       if (response.status === 401 && refreshTokenValue) {
         const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
