@@ -122,6 +122,7 @@ export function createKickBotRunner({
   // OAuth tokens - load from env if available (for persistence across restarts)
   let accessToken = BEARER_TOKEN || null
   let refreshTokenValue = REFRESH_TOKEN_ENV || null
+  let lastCodeVerifier = null  // Store codeVerifier for OAuth resilience
 
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
   const WEBSOCKET_URL = `wss://ws-us2.pusher.com/app/${PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0`
