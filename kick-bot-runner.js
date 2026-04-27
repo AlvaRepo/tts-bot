@@ -301,8 +301,8 @@ export function createKickBotRunner({
     if (!text || !started) return { ok: false, error: 'not connected' }
 
     // Check if we have OAuth credentials
-    if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
-      console.log('[sendChatMessage] OAuth not configured - missing CLIENT_ID or SECRET')
+    if (!OAUTH_CLIENT_ID) {
+      console.log('[sendChatMessage] OAuth not configured - missing CLIENT_ID')
       return { ok: false, error: 'OAuth not configured' }
     }
 
@@ -356,27 +356,58 @@ export function createKickBotRunner({
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
     
-    // Store for later use in exchangeCode
-    pendingCodeVerifier = codeVerifier
-    console.log('[OAuth] getOAuthUrl - stored codeVerifier:', codeVerifier.substring(0, 10) + '...')
+    // Store verifier in state parameter (base64-encoded)
+    const stateWithVerifier = btoa(`${state}:${codeVerifier}`)
+    console.log('[OAuth] getOAuthUrl - stored codeVerifier in state')
     
     // OAuth scopes: chat:write is REQUIRED to send messages
     const scopes = 'user:read channel:read chat:write'
-    const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, state, codeChallenge)
+    const url = buildOAuthUrl(OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, scopes, stateWithVerifier, codeChallenge)
     console.log('[OAuth] getOAuthUrl - URL built, scopes:', scopes)
     
     return {
       url,
-      codeVerifier,
-      state
+      codeVerifier,  // Still return for immediate use if needed
+      state: stateWithVerifier
     }
   }
 
-  async function exchangeCode(code, codeVerifier) {
+async function exchangeCode(code, codeVerifier) {
     if (!OAUTH_CLIENT_ID) {
       console.log('[OAuth] exchangeCode - OAuth not configured, CLIENT_ID:', !!OAUTH_CLIENT_ID)
       return { ok: false, error: 'OAuth not configured' }
     }
+    
+    // If no verifier passed, try to extract from state (which should be in the URL params)
+    // Actually, the verifier should be passed from the frontend
+    console.log('[OAuth] Exchange for code:', code ? '***' : 'missing')
+    console.log('[OAuth] client_id:', OAUTH_CLIENT_ID)
+    console.log('[OAuth] redirect_uri:', OAUTH_REDIRECT_URI)
+    console.log('[OAuth] codeVerifier passed:', codeVerifier ? 'SET' : 'NOT SET')
+    
+    // Try with provided verifier
+    const verifier = codeVerifier || pendingCodeVerifier
+    pendingCodeVerifier = null // Clear after use
+    
+    if (!verifier) {
+      console.log('[OAuth] No verifier available - trying without (may fail)')
+    }
+    
+    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URI, verifier)
+    console.log('[OAuth] Token response:', JSON.stringify(result))
+    if (result.access_token) {
+      console.log('[OAuth] SUCCESS - got access_token:', result.access_token.substring(0, 20) + '...')
+      accessToken = result.access_token
+      refreshTokenValue = result.refresh_token
+      return { ok: true, accessToken: result.access_token, refreshToken: result.refresh_token }
+    }
+    console.log('[OAuth] FAILED - no access_token in response')
+    return { ok: false, error: result.message || 'exchange failed' }
+  } catch (error) {
+    console.log('[OAuth] exchangeCode exception:', error.message)
+    return { ok: false, error: error.message }
+  }
+}
     
     // Use provided codeVerifier or the one stored from OAuth URL generation
     const verifier = codeVerifier || pendingCodeVerifier

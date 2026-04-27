@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kick OAuth - Obtener Token</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; padding: 20px; }
+    h1 { color: #53fc18; margin-bottom: 20px; }
+    .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .section h2 { color: #53fc18; font-size: 14px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    input, textarea { width: 100%; background: #0f0f0f; border: 1px solid #444; border-radius: 4px; padding: 8px; color: #e0e0e0; font-family: monospace; font-size: 13px; margin-bottom: 8px; }
+    button { background: #53fc18; color: #000; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; cursor: pointer; font-family: monospace; }
+    button:disabled { background: #333; color: #666; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #3fd410; }
+    #chat-log { height: 300px; overflow-y: auto; background: #0a0a0a; border: 1px solid #333; border-radius: 4px; padding: 10px; font-size: 12px; }
+    .msg { margin-bottom: 4px; }
+    .msg .user { color: #53fc18; }
+    .msg .content { color: #ccc; }
+    .status { font-size: 12px; color: #888; margin-top: 8px; }
+    .status.ok { color: #53fc18; }
+    .status.error { color: #ff4444; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; margin-bottom: 0; }
+  </style>
+</head>
+<body>
+
+<h1>⚡ Kick Chat Bot - Obtener Token</h1>
+
+<!-- CONFIG -->
+<div class="section">
+  <h2>1. Configuración</h2>
+  <input type="text" id="client_id" placeholder="Client ID (de kick.com/settings/developer)" />
+  <input type="password" id="client_secret" placeholder="Client Secret" />
+  <input type="text" id="channel_name" placeholder="Nombre del canal (ej: xqc)" />
+  <button onclick="startAuth()">Autenticar con Kick</button>
+  <div id="auth-status" class="status"></div>
+</div>
+
+<!-- TOKEN INFO -->
+<div class="section" id="token-section" style="display:none">
+  <h2>2. Token Obtenido</h2>
+  <div id="token-status" class="status ok">✅ Autenticado</div>
+  <div id="user-info" class="status"></div>
+  <div style="margin-top: 12px;">
+    <strong>Access Token (copiar y pegar en KICK_BOT_BEARER):</strong>
+    <textarea id="access-token" rows="3" readonly style="margin-top: 8px;"></textarea>
+    <button onclick="copyToken()" style="margin-top: 8px;">Copiar Token</button>
+  </div>
+</div>
+
+<script>
+  const REDIRECT_URI = window.location.origin + window.location.pathname;
+  let accessToken = null;
+  let refreshToken = null;
+  let broadcasterUserId = null;
+
+  // ─── PKCE helpers ───────────────────────────────────────
+  function generateCodeVerifier() {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return btoa(String.fromCharCode(...array))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  async function generateCodeChallenge(verifier) {
+    const data = new TextEncoder().encode(verifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  // ─── STEP 1: Iniciar auth ────────────────────────────────────────
+  async function startAuth() {
+    const clientId = document.getElementById('client_id').value.trim();
+    if (!clientId) return setStatus('auth-status', '❌ Falta el Client ID', 'error');
+
+    const verifier = generateCodeVerifier();
+    const challenge = await generateCodeChallenge(verifier);
+    const state = crypto.randomUUID();
+
+    sessionStorage.setItem('kick_code_verifier', verifier);
+    sessionStorage.setItem('kick_state', state);
+    sessionStorage.setItem('kick_client_id', clientId);
+    sessionStorage.setItem('kick_client_secret', document.getElementById('client_secret').value.trim());
+    sessionStorage.setItem('kick_channel', document.getElementById('channel_name').value.trim());
+
+    const url = new URL('https://id.kick.com/oauth/authorize');
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('client_id', clientId);
+    url.searchParams.set('redirect_uri', REDIRECT_URI);
+    url.searchParams.set('scope', 'user:read channel:read chat:write');
+    url.searchParams.set('code_challenge', challenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+    url.searchParams.set('state', state);
+
+    window.location.href = url.toString();
+  }
+
+  // ─── STEP 2: Callback — intercambiar code por tokens ──────────
+  async function handleCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const returnedState = params.get('state');
+    const error = params.get('error');
+
+    if (error) return setStatus('auth-status', `❌ Error de Kick: ${error}`, 'error');
+    if (!code) return;
+
+    const savedState = sessionStorage.getItem('kick_state');
+    if (returnedState !== savedState) return setStatus('auth-status', '❌ State mismatch — CSRF detectado', 'error');
+
+    const clientId = sessionStorage.getItem('kick_client_id');
+    const clientSecret = sessionStorage.getItem('kick_client_secret');
+    const codeVerifier = sessionStorage.getItem('kick_code_verifier');
+
+    setStatus('auth-status', '⏳ Intercambiando código...', '');
+
+    try {
+      const res = await fetch('https://id.kick.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: REDIRECT_URI,
+          code_verifier: codeVerifier,
+          code: code,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error_description || data.error || JSON.stringify(data));
+
+      accessToken = data.access_token;
+      refreshToken = data.refresh_token;
+
+      // Limpiar URL
+      window.history.replaceState({}, '', window.location.pathname);
+
+      // Restaurar campos
+      document.getElementById('client_id').value = clientId;
+      document.getElementById('client_secret').value = clientSecret;
+      document.getElementById('channel_name').value = sessionStorage.getItem('kick_channel') || '';
+
+      // Mostrar token
+      document.getElementById('token-section').style.display = 'block';
+      document.getElementById('access-token').value = accessToken;
+      setStatus('auth-status', '✅ Token obtenido', 'ok');
+    } catch (e) {
+      setStatus('auth-status', `❌ ${e.message}`, 'error');
+    }
+  }
+
+  function copyToken() {
+    const tokenField = document.getElementById('access-token');
+    tokenField.select();
+    document.execCommand('copy');
+    alert('Token copiado al portapapeles!');
+  }
+
+  // ─── Helpers UI ───────────────────────────────────────────────
+  function setStatus(id, msg, type) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = `status ${type}`;
+  }
+
+  // ─── Init — detectar si estamos en el callback ─────────────────
+  if (window.location.search.includes('code=')) {
+    handleCallback();
+  }
+
+  // Enter para enviar
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && document.activeElement.id === 'msg-input') {
+      sendMessage();
+    }
+  });
+</script>
+</body>
+</html>
