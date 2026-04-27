@@ -739,14 +739,17 @@ const server = app.listen(PORT, () => {
       // Cuando un mensaje TTS está por reproducirse, enviarlo al chat del cliente
       if (event.type === 'message:start' && event.text) {
         const text = event.text
-        console.log('[TTS->Chat] Sending to customer channel:', text.substring(0, 50))
         
-        // Usar sendChatMessageAsUser si el cliente tiene tokens configurados
+        // Solo enviar si hay un cliente configurado
         const botRunner = kickBotRunnerRef
-        if (botRunner?.sendChatMessageAsUser) {
+        const customerTokens = botRunner?.getCustomerTokens?.() || {}
+        
+        if (customerTokens.broadcasterId && customerTokens.accessToken) {
+          console.log('[TTS->Chat] Sending to customer channel:', text.substring(0, 50), 'broadcasterId:', customerTokens.broadcasterId)
+          
           botRunner.sendChatMessageAsUser(text).then(result => {
             if (result.ok) {
-              console.log('[TTS->Chat] Message sent to customer channel:', result.messageId)
+              console.log('[TTS->Chat] Message sent to customer:', result.messageId)
             } else {
               console.log('[TTS->Chat] Failed:', result.error)
             }
@@ -754,7 +757,7 @@ const server = app.listen(PORT, () => {
             console.log('[TTS->Chat] Exception:', err.message)
           })
         } else {
-          console.log('[TTS->Chat] sendChatMessageAsUser not available')
+          console.log('[TTS->Chat] No customer configured, skipping')
         }
       }
     }
