@@ -3,6 +3,53 @@ import express from 'express'
 import { WebSocketServer } from 'ws'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
+import crypto from 'crypto'
+
+// Encriptación AES-256 para tokens sensibles
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY // 32 bytes (64 hex chars)
+const ALGORITHM = 'aes-256-gcm'
+
+function encrypt(text) {
+  if (!text || !ENCRYPTION_KEY) return text
+  try {
+    const key = Buffer.from(ENCRYPTION_KEY, 'hex')
+    const iv = crypto.randomBytes(16)
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
+    let encrypted = cipher.update(text, 'utf8', 'hex')
+    encrypted += cipher.final('hex')
+    const authTag = cipher.getAuthTag()
+    return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted
+  } catch (e) {
+    console.error('[encrypt] Error:', e.message)
+    return text
+  }
+}
+
+function decrypt(encryptedText) {
+  if (!encryptedText || !ENCRYPTION_KEY) return encryptedText
+  try {
+    const parts = encryptedText.split(':')
+    if (parts.length !== 3) return encryptedText // No encriptado o formato viejo
+    const key = Buffer.from(ENCRYPTION_KEY, 'hex')
+    const iv = Buffer.from(parts[0], 'hex')
+    const authTag = Buffer.from(parts[1], 'hex')
+    const encrypted = parts[2]
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
+    decipher.setAuthTag(authTag)
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+    decrypted += decipher.final('utf8')
+    return decrypted
+  } catch (e) {
+    console.error('[decrypt] Error:', e.message)
+    return encryptedText
+  }
+}
+
+function isEncrypted(text) {
+  if (!text) return false
+  const parts = text.split(':')
+  return parts.length === 3 && parts[0].length === 32 && parts[1].length === 32
+}
 import {
   initDB,
   insertMessage,
@@ -89,6 +136,22 @@ const kickBotRunner = createKickBotRunner({
   updateBotRuntime,
   handleChatEvent: kickBotRouter.handleEvent,
   sendChatMessage: (text) => kickBotRunnerRef?.sendChatMessage?.(text),
+  // Callback para guardar tokens cuando se hace refresh
+  onCustomerTokensRefreshed: async (accessToken, refreshToken, broadcasterId) => {
+    try {
+      const encryptedRefreshToken = refreshToken ? encrypt(refreshToken) : null
+      const currentConfig = await getKickBotConfig()
+      await setKickBotConfig({
+        ...currentConfig,
+        customerAccessToken: accessToken,
+        customerRefreshToken: encryptedRefreshToken,
+        customerBroadcasterId: broadcasterId
+      })
+      console.log('[onCustomerTokensRefreshed] Saved (encrypted)')
+    } catch (e) {
+      console.error('[onCustomerTokensRefreshed] Error:', e.message)
+    }
+  },
   logger: console
 })
 
@@ -256,6 +319,127 @@ app.post('/api/bot/config', (req, res) => {
   res.json({ ok: true, ...config })
 })
 
+// Endpoint para guardar los tokens del cliente (para TTS en canal del cliente)
+app.post('/api/bot/customer-tokens', async (req, res) => {
+  // Verificar API key de admin (si está configurada)
+  const ADMIN_API_KEY = process.env.ADMIN_API_KEY
+  const providedKey = req.headers['x-admin-key']
+  
+  if (ADMIN_API_KEY && providedKey !== ADMIN_API_KEY) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
+  
+  try {
+    const { accessToken, refreshToken, broadcasterId } = req.body
+    
+    if (!accessToken || !broadcasterId) {
+      return res.status(400).json({ error: 'accessToken y broadcasterId son requeridos' })
+    }
+    
+    console.log('[customer-tokens] Saving customer tokens with broadcasterId:', broadcasterId)
+    
+    // Guardar en el runner
+    kickBotRunner.setCustomerTokens(accessToken, refreshToken || null, broadcasterId)
+    
+    // Encriptar refresh_token antes de guardar en Supabase
+    const encryptedRefreshToken = refreshToken ? encrypt(refreshToken) : null
+    
+    // Guardar en config de Supabase
+    const currentConfig = await getKickBotConfig()
+    const updatedConfig = await setKickBotConfig({
+      ...currentConfig,
+      customerAccessToken: accessToken,
+      customerRefreshToken: encryptedRefreshToken, // Guardar encriptado
+      customerBroadcasterId: broadcasterId
+    })
+    
+    console.log('[customer-tokens] Saved (refresh_token encrypted):', !!encryptedRefreshToken)
+    
+    res.json({ ok: true, broadcasterId })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// Endpoint: Obtener URL de OAuth para que el cliente conecte su cuenta
+app.get('/api/bot/customer-oauth-url', async (_req, res) => {
+  try {
+    const oauthData = await kickBotRunner.getCustomerOAuthUrl()
+    if (oauthData) {
+      res.json({ url: oauthData.url, codeVerifier: oauthData.codeVerifier })
+    } else {
+      res.status(500).json({ error: 'OAuth not configured' })
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// Callback OAuth para cliente - automático sin copy-paste
+app.get('/oauth/customer-callback', async (req, res) => {
+  const { code, error: oauthError, state } = req.query
+  
+  if (oauthError) {
+    return res.redirect('/customer-connect?error=' + oauthError)
+  }
+  
+  if (!code) {
+    return res.redirect('/customer-connect?error=missing_code')
+  }
+  
+  // Extraer codeVerifier del state
+  let codeVerifier = null
+  if (state && typeof state === 'string') {
+    try {
+      const decoded = Buffer.from(state, 'base64').toString()
+      const parts = decoded.split(':')
+      if (parts.length >= 2) {
+        codeVerifier = parts[1]
+      }
+    } catch (e) {
+      console.log('[customer-callback] Failed to parse state:', e.message)
+    }
+  }
+  
+  try {
+    // Exchange code por tokens automáticamente en el servidor
+    const result = await kickBotRunner.exchangeCustomerCode(code, codeVerifier)
+    
+    if (result.ok) {
+      console.log('[customer-callback] Customer connected, broadcasterId:', result.broadcasterId)
+      
+      // Encriptar refresh_token
+      const encryptedRefreshToken = result.refreshToken ? encrypt(result.refreshToken) : null
+      
+      // Guardar tokens en config
+      const currentConfig = await getKickBotConfig()
+      await setKickBotConfig({
+        ...currentConfig,
+        customerAccessToken: result.accessToken,
+        customerRefreshToken: encryptedRefreshToken, // Encriptado
+        customerBroadcasterId: result.broadcasterId,
+        customerUsername: result.username, // Nombre del canal del cliente
+        customerChatroomId: result.chatroomId // Chatroom ID para escribir en su chat
+      })
+      // También guardar en memoria del runner (sin encriptar, en memoria RAM)
+      kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
+      
+      res.redirect('/customer-connect?success=1')
+    } else {
+      console.log('[customer-callback] Exchange failed:', result.error)
+      res.redirect('/customer-connect?error=' + encodeURIComponent(result.error || 'exchange_failed'))
+    }
+  } catch (err) {
+    console.log('[customer-callback] Exception:', err.message)
+    res.redirect('/customer-connect?error=' + encodeURIComponent(err.message))
+  }
+})
+
+// Serve la página de conexión del cliente
+app.get('/customer-connect', (_req, res) => {
+  res.type('html').sendFile(resolve('./public/customer-connect.html'))
+})
+
 app.get('/api/bot/status', async (_req, res) => {
   try {
     const config = await getKickBotConfig()
@@ -315,15 +499,50 @@ app.get('/api/bot/oauth-url', async (_req, res) => {
 
 app.post('/api/bot/oauth-exchange', async (req, res) => {
   try {
-    const { code, codeVerifier } = req.body
+    const { code, codeVerifier, isCustomer = false } = req.body
     console.log('[oauth-exchange] code:', code ? code.substring(0, 10) + '...' : 'missing')
     console.log('[oauth-exchange] codeVerifier:', codeVerifier ? codeVerifier.substring(0, 10) + '...' : 'missing')
+    console.log('[oauth-exchange] isCustomer:', isCustomer)
     if (!code) {
       return res.status(400).json({ error: 'Missing code' })
     }
     // Try exchange - codeVerifier is optional now (will use stored if available)
     const result = await kickBotRunner.exchangeCode(code, codeVerifier)
     console.log('[oauth-exchange] result:', JSON.stringify(result))
+    
+    // Si es para el cliente (isCustomer), también obtener su broadcaster_user_id
+    if (result.ok && isCustomer && result.accessToken) {
+      console.log('[oauth-exchange] Fetching customer user info...')
+      try {
+        const userRes = await fetch('https://api.kick.com/public/v1/users/me', {
+          headers: { 'Authorization': `Bearer ${result.accessToken}` }
+        })
+        const userData = await userRes.json()
+        console.log('[oauth-exchange] User data:', JSON.stringify(userData))
+        
+        const broadcasterId = userData?.data?.id || userData?.id
+        if (broadcasterId) {
+          // Guardar tokens del cliente en el runner
+          kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, broadcasterId)
+          
+          // También guardar en la config de Supabase para persistencia
+          const currentConfig = await getKickBotConfig()
+          await setKickBotConfig({
+            ...currentConfig,
+            customerAccessToken: result.accessToken,
+            customerRefreshToken: result.refreshToken,
+            customerBroadcasterId: broadcasterId
+          })
+          
+          console.log('[oauth-exchange] Customer tokens saved with broadcasterId:', broadcasterId)
+        } else {
+          console.log('[oauth-exchange] Could not get broadcasterId from user data')
+        }
+      } catch (userErr) {
+        console.log('[oauth-exchange] Error fetching user data:', userErr.message)
+      }
+    }
+    
     res.json(result)
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -510,6 +729,35 @@ const server = app.listen(PORT, () => {
     })
 
     queue.init(broadcast)
+
+    // Agregar listener para enviar TTS al chat del cliente cuando esté listo
+    const originalBroadcast = broadcast
+    broadcast = function(event) {
+      // Primero ejecutar el broadcast original
+      originalBroadcast(event)
+      
+      // Cuando un mensaje TTS está por reproducirse, enviarlo al chat del cliente
+      if (event.type === 'message:start' && event.text) {
+        const text = event.text
+        console.log('[TTS->Chat] Sending to customer channel:', text.substring(0, 50))
+        
+        // Usar sendChatMessageAsUser si el cliente tiene tokens configurados
+        const botRunner = kickBotRunnerRef
+        if (botRunner?.sendChatMessageAsUser) {
+          botRunner.sendChatMessageAsUser(text).then(result => {
+            if (result.ok) {
+              console.log('[TTS->Chat] Message sent to customer channel:', result.messageId)
+            } else {
+              console.log('[TTS->Chat] Failed:', result.error)
+            }
+          }).catch(err => {
+            console.log('[TTS->Chat] Exception:', err.message)
+          })
+        } else {
+          console.log('[TTS->Chat] sendChatMessageAsUser not available')
+        }
+      }
+    }
   } catch (error) {
     console.error('❌ Error creando WebSocketServer:', error)
   }
@@ -519,3 +767,31 @@ void kickBotRunner.start().catch(error => {
   updateBotRuntime({ connected: false, lastError: error.message })
   console.error('[kick-bot] failed to start:', error)
 })
+
+// Al iniciar, cargar y desencriptar tokens del cliente desde Supabase
+async function loadCustomerTokensOnStartup() {
+  try {
+    const config = await getKickBotConfig()
+    if (config.customerAccessToken) {
+      // Desencriptar refresh_token si está encriptado
+      let refreshToken = config.customerRefreshToken
+      if (refreshToken && isEncrypted(refreshToken)) {
+        refreshToken = decrypt(refreshToken)
+        console.log('[loadCustomerTokens] Refresh token decrypted')
+      }
+      
+      // Cargar en el runner
+      kickBotRunner.setCustomerTokens(
+        config.customerAccessToken,
+        refreshToken,
+        config.customerBroadcasterId
+      )
+      console.log('[loadCustomerTokens] Customer tokens loaded, broadcasterId:', config.customerBroadcasterId)
+    }
+  } catch (error) {
+    console.error('[loadCustomerTokens] Error:', error.message)
+  }
+}
+
+// Ejecutar carga de tokens al iniciar
+loadCustomerTokensOnStartup()

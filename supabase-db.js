@@ -438,7 +438,14 @@ export function sanitizeKickBotConfig(value) {
     allowCommandsFromMods: input.allowCommandsFromMods !== false,
     allowCommandsFromVip: input.allowCommandsFromVip === true,
     allowCommandsFromSubscribers: input.allowCommandsFromSubscribers !== false,
-    sessionToken: typeof input.sessionToken === 'string' && input.sessionToken.trim().length > 0 ? input.sessionToken.trim() : ''
+    sessionToken: typeof input.sessionToken === 'string' && input.sessionToken.trim().length > 0 ? input.sessionToken.trim() : '',
+    
+    // Customer OAuth tokens (for sending TTS to customer's channel)
+    customerAccessToken: typeof input.customerAccessToken === 'string' && input.customerAccessToken.trim().length > 0 ? input.customerAccessToken.trim() : null,
+    customerRefreshToken: typeof input.customerRefreshToken === 'string' && input.customerRefreshToken.trim().length > 0 ? input.customerRefreshToken.trim() : null,
+    customerBroadcasterId: input.customerBroadcasterId ? parseInt(String(input.customerBroadcasterId), 10) : null,
+    customerUsername: typeof input.customerUsername === 'string' && input.customerUsername.trim().length > 0 ? input.customerUsername.trim() : null,
+    customerChatroomId: input.customerChatroomId ? parseInt(String(input.customerChatroomId), 10) : null
   }
 }
 

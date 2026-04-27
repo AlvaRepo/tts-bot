@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conectar tu canal de Kick - TTS</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif; 
+      max-width: 480px; 
+      margin: 0 auto; 
+      padding: 40px 20px; 
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    h1 { 
+      color: #53c28a; 
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+    .subtitle {
+      color: #888;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .kick-logo {
+      width: 60px;
+      height: 60px;
+      margin-bottom: 20px;
+    }
+    button { 
+      background: #53c28a; 
+      color: #1a1a2e;
+      border: none; 
+      padding: 16px 32px; 
+      border-radius: 12px; 
+      font-size: 16px; 
+      font-weight: 600;
+      cursor: pointer; 
+      width: 100%;
+      transition: all 0.2s;
+    }
+    button:hover { 
+      background: #6ed9a0; 
+      transform: translateY(-2px);
+    }
+    button:disabled { 
+      background: #444; 
+      cursor: not-allowed;
+      transform: none;
+    }
+    .status {
+      margin-top: 24px;
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+    .status.loading {
+      background: rgba(83, 194, 138, 0.1);
+      border: 1px solid rgba(83, 194, 138, 0.3);
+    }
+    .status.success {
+      background: rgba(83, 194, 138, 0.15);
+      border: 1px solid #53c28a;
+      color: #53c28a;
+    }
+    .status.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+    }
+    .checkbox-wrapper {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #888;
+    }
+    .checkbox-wrapper input {
+      width: 16px;
+      height: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Kick Logo SVG -->
+    <svg class="kick-logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="#53c28a"/>
+    </svg>
+    
+    <h1>Conectar tu canal de Kick</h1>
+    <p class="subtitle">Autorizá tu cuenta para que el TTS se reproduzca en tu chat</p>
+    
+    <button id="connectBtn" onclick="startConnect()">
+      Conectar con Kick
+    </button>
+    
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="asBot" checked>
+      <label for="asBot">Enviar como Bot (con insignia 🤖)</label>
+    </div>
+    
+    <div id="status" class="status" style="display: none;"></div>
+  </div>
+
+  <script>
+    let codeVerifier = null
+    
+    // Check for errors in URL on load (OAuth callback)
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search)
+      const error = params.get('error')
+      const success = params.get('success')
+      
+      if (error) {
+        showStatus('error', '❌ Error: ' + error)
+      }
+      
+      if (success === '1') {
+        showStatus('success', '✅ ¡Listo! Tu canal está conectado. El TTS ahora se reproducirá en tu chat.')
+        // Limpiar URL
+        window.history.replaceState({}, document.title, '/customer-connect')
+      }
+    })
+    
+    function showStatus(type, message) {
+      const status = document.getElementById('status')
+      status.style.display = 'block'
+      status.className = 'status ' + type
+      status.textContent = message
+    }
+    
+    async function startConnect() {
+      const btn = document.getElementById('connectBtn')
+      btn.disabled = true
+      btn.textContent = 'Cargando...'
+      
+      try {
+        // Obtener URL de OAuth
+        const res = await fetch('/api/bot/customer-oauth-url')
+        const data = await res.json()
+        
+        if (data.url) {
+          // Guardar codeVerifier
+          codeVerifier = data.codeVerifier
+          // Redirigir a Kick (en lugar de abrir popup)
+          window.location.href = data.url
+        } else {
+          btn.disabled = false
+          btn.textContent = 'Error: ' + (data.error || 'desconocido')
+          showStatus('error', data.error || 'Error al conectar')
+        }
+      } catch (e) {
+        btn.disabled = false
+        btn.textContent = 'Conectar con Kick'
+        showStatus('error', 'Error: ' + e.message)
+      }
+    }
+  </script>
+</body>
+</html>

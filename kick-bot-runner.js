@@ -58,6 +58,24 @@ function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
   }
 }
 
+function buildSendChatRequestAsUser(text, bearerToken, broadcasterUserId) {
+  const sanitizedText = sanitizeMessage(text)
+  // Tipo "user" requiere broadcaster_user_id
+  const body = { 
+    content: sanitizedText, 
+    type: 'user',
+    broadcaster_user_id: parseInt(broadcasterUserId, 10)
+  }
+  return {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${bearerToken}`
+    },
+    body: JSON.stringify(body)
+  }
+}
+
 // OAuth helpers
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
   const url = new URL(`${KICK_OAUTH_BASE}/oauth/authorize`)
@@ -114,6 +132,7 @@ export function createKickBotRunner({
   updateBotRuntime,
   handleChatEvent,
   sendChatMessage: sendChatMessageFromOutside,
+  onCustomerTokensRefreshed = null, // Callback para guardar tokens actualizados
   logger = console
 }) {
   let ws = null
@@ -133,6 +152,11 @@ export function createKickBotRunner({
   let accessToken = BEARER_TOKEN || null
   let refreshTokenValue = REFRESH_TOKEN_ENV || null
   let lastCodeVerifier = null  // Store codeVerifier for OAuth resilience
+
+  // Customer OAuth tokens (for sending TTS to customer's channel)
+  let customerAccessToken = null
+  let customerRefreshToken = null
+  let customerBroadcasterId = null
 
   const PUSHER_APP_KEY = '32cbd69e4b950bf97679'
   const WEBSOCKET_URL = `wss://ws-us2.pusher.com/app/${PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0`
@@ -204,6 +228,16 @@ export function createKickBotRunner({
 
     const envChatroomId = parseInt(process.env.KICK_CHATROOM_ID ?? '', 10)
     chatroomId = envChatroomId || config.chatroomId || null
+
+    // Load customer OAuth tokens from config
+    customerAccessToken = config.customerAccessToken || null
+    customerRefreshToken = config.customerRefreshToken || null
+    customerBroadcasterId = config.customerBroadcasterId || null
+
+    console.log('[start] Customer tokens loaded:', { 
+      hasAccessToken: !!customerAccessToken, 
+      customerBroadcasterId 
+    })
 
     if (!enabled) {
       updateBotRuntime({ connected: false, lastError: null })
@@ -387,13 +421,172 @@ export function createKickBotRunner({
     return { ok: false, error: result.message || 'exchange failed' }
   }
 
+  // Variable para el codeVerifier del cliente
+  let lastCustomerCodeVerifier = null
+
+  // Generar URL de OAuth para que el cliente conecte su cuenta
+  async function getCustomerOAuthUrl() {
+    if (!OAUTH_CLIENT_ID) return null
+    const state = Math.random().toString(36).substring(2)
+    const codeVerifier = generateCodeVerifier()
+    const codeChallenge = await generateCodeChallengeFromVerifier(codeVerifier)
+    
+    // Guardar codeVerifier para el callback
+    lastCustomerCodeVerifier = codeVerifier
+    
+    // Usar redirect_uri específico para clientes
+    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI || `${OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')}`
+    const scopes = 'user:read channel:read chat:write'
+    const url = buildOAuthUrl(OAUTH_CLIENT_ID, customerRedirectUri, scopes, state, codeChallenge)
+    
+    console.log('[getCustomerOAuthUrl] redirect_uri:', customerRedirectUri)
+    
+    return {
+      url,
+      codeVerifier,
+      state
+    }
+  }
+
+  // Intercambiar code por tokens para el cliente
+  async function exchangeCustomerCode(code, codeVerifier) {
+    if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
+      return { ok: false, error: 'OAuth not configured' }
+    }
+
+    const verifier = codeVerifier || lastCustomerCodeVerifier
+    if (!verifier) {
+      return { ok: false, error: 'No code_verifier available. Please start OAuth flow again.' }
+    }
+
+    // Usar redirect_uri específico para clientes
+    const customerRedirectUri = process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI || `${OAUTH_REDIRECT_URI.replace('/oauth/callback', '/oauth/customer-callback')}`
+    
+    const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, customerRedirectUri, verifier)
+    
+    if (result.access_token) {
+      // Obtener el broadcaster_id, username y chatroom_id del cliente
+      let broadcasterId = null
+      let username = null
+      let chatroomId = null
+      try {
+        const userRes = await fetch(`${KICK_API_BASE}/public/v1/users/me`, {
+          headers: { 'Authorization': `Bearer ${result.access_token}` }
+        })
+        const userData = await userRes.json()
+        broadcasterId = userData?.data?.id || userData?.id
+        username = userData?.data?.username || userData?.username
+        // Obtener chatroom_id para escribir en el chat del cliente
+        chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
+        console.log('[exchangeCustomerCode] Customer:', { broadcasterId, username, chatroomId })
+      } catch (e) {
+        console.log('[exchangeCustomerCode] Failed to get user data:', e.message)
+      }
+      
+      // Guardar tokens del cliente
+      customerAccessToken = result.access_token
+      customerRefreshToken = result.refresh_token
+      customerBroadcasterId = broadcasterId
+      
+      return { 
+        ok: true, 
+        accessToken: result.access_token, 
+        refreshToken: result.refresh_token,
+        broadcasterId,
+        username,
+        chatroomId
+      }
+    }
+    return { ok: false, error: result.message || 'exchange failed' }
+  }
+
+  // Guardar tokens del cliente (cuando completa OAuth)
+  function setCustomerTokens(accessTokenValue, refreshTokenValue, broadcasterId) {
+    customerAccessToken = accessTokenValue
+    customerRefreshToken = refreshTokenValue
+    customerBroadcasterId = broadcasterId
+    console.log('[setCustomerTokens] Customer tokens set:', { 
+      hasAccessToken: !!customerAccessToken, 
+      customerBroadcasterId 
+    })
+  }
+
+  // Obtener el estado de los tokens del cliente (para persistirlos)
+  function getCustomerTokens() {
+    return {
+      accessToken: customerAccessToken,
+      refreshToken: customerRefreshToken,
+      broadcasterId: customerBroadcasterId
+    }
+  }
+
+  // Enviar mensaje como el usuario (no como bot)
+  async function sendChatMessageAsUser(text) {
+    console.log('[sendChatAsUser] === START ===')
+    console.log('[sendChatAsUser] text:', text)
+    console.log('[sendChatAsUser] has customerAccessToken:', !!customerAccessToken)
+    console.log('[sendChatAsUser] customerBroadcasterId:', customerBroadcasterId)
+    
+    if (!text || !customerAccessToken || !customerBroadcasterId) {
+      console.log('[sendChatAsUser] early return - missing params')
+      return { ok: false, error: 'Customer not authenticated or missing broadcaster_id' }
+    }
+
+    try {
+      // Usar tipo "user" con broadcaster_user_id del cliente
+      const requestOpts = buildSendChatRequestAsUser(text, customerAccessToken, customerBroadcasterId)
+      console.log('[sendChatAsUser] request body:', requestOpts.body)
+      
+      const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, requestOpts)
+      const result = await response.json()
+      console.log('[sendChatAsUser] status:', response.status, 'result:', JSON.stringify(result))
+
+      // Manejar refresh token del cliente
+      if (response.status === 401 && customerRefreshToken) {
+        console.log('[sendChatAsUser] 401, refreshing customer token...')
+        const refreshed = await refreshToken(customerRefreshToken, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
+        if (refreshed.access_token) {
+          customerAccessToken = refreshed.access_token
+          customerRefreshToken = refreshed.refresh_token
+          
+          // Guardar tokens actualizados en Supabase (encriptados)
+          if (onCustomerTokensRefreshed) {
+            onCustomerTokensRefreshed(customerAccessToken, customerRefreshToken, customerBroadcasterId)
+          }
+          
+          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, 
+            buildSendChatRequestAsUser(text, customerAccessToken, customerBroadcasterId))
+          const retryResult = await retryResponse.json()
+          if (retryResponse.ok && retryResult.data?.message_id) {
+            return { ok: true, messageId: retryResult.data.message_id }
+          }
+          return { ok: false, error: retryResult.message || 'retry failed' }
+        }
+      }
+
+      if (response.ok && result.data?.message_id) {
+        return { ok: true, messageId: result.data.message_id }
+      }
+      return { ok: false, error: result.message || 'send failed', details: result }
+    } catch (error) {
+      console.log('[sendChatAsUser] exception:', error.message)
+      return { ok: false, error: error.message }
+    }
+  }
+
   return {
     start,
     stop,
     isStarted: () => started,
     getClient: () => ws,
     sendChatMessage,
+    sendChatMessageAsUser,
     getOAuthUrl,
-    exchangeCode
+    exchangeCode,
+    // Customer OAuth
+    getCustomerOAuthUrl,
+    exchangeCustomerCode,
+    setCustomerTokens,
+    getCustomerTokens
   }
 }
