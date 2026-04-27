@@ -97,7 +97,17 @@ async function exchangeCodeForToken(code, clientId, clientSecret, redirectUri, c
     body: body.toString()
   })
 
-  return response.json()
+  // Debug: log the actual response before trying to parse
+  const responseText = await response.text()
+  console.log('[OAuth exchangeCodeForToken] Response status:', response.status)
+  console.log('[OAuth exchangeCodeForToken] Response body:', responseText)
+
+  try {
+    return JSON.parse(responseText)
+  } catch (e) {
+    console.log('[OAuth exchangeCodeForToken] Failed to parse JSON:', e.message)
+    return { error: 'invalid_response', message: responseText || 'empty response' }
+  }
 }
 
 async function refreshToken(refreshTokenValue, clientId, clientSecret) {
@@ -113,7 +123,17 @@ async function refreshToken(refreshTokenValue, clientId, clientSecret) {
     body: body.toString()
   })
 
-  return response.json()
+  // Debug: log the actual response
+  const responseText = await response.text()
+  console.log('[OAuth refreshToken] Response status:', response.status)
+  console.log('[OAuth refreshToken] Response body:', responseText.substring(0, 300))
+
+  try {
+    return JSON.parse(responseText)
+  } catch (e) {
+    console.log('[OAuth refreshToken] Failed to parse JSON:', e.message)
+    return { error: 'invalid_response', message: responseText || 'empty response' }
+  }
 }
 
 export function createKickBotRunner({
