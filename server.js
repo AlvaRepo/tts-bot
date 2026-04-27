@@ -330,6 +330,40 @@ app.post('/api/bot/oauth-exchange', async (req, res) => {
   }
 })
 
+// Simple test endpoint for client_credentials flow (for testing only - may not have chat:write)
+app.post('/api/bot/test-token', async (req, res) => {
+  try {
+    const { client_id, client_secret } = req.body
+    if (!client_id || !client_secret) {
+      return res.status(400).json({ error: 'Missing client_id or client_secret' })
+    }
+    
+    const response = await fetch('https://id.kick.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id,
+        client_secret,
+      }).toString()
+    })
+    
+    const data = await response.json()
+    if (!response.ok) {
+      return res.status(400).json({ error: data.error || 'failed', details: data })
+    }
+    
+    res.json({ 
+      ok: true, 
+      accessToken: data.access_token,
+      expiresIn: data.expires_in,
+      note: 'This is an App Access Token - may not have chat:write scope'
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 app.get('/api/audio-profile', (_req, res) => {
   res.json({
     preference: currentAudioProfilePreference,
