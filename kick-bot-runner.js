@@ -296,6 +296,7 @@ export function createKickBotRunner({
   }
 
   async function sendChatMessage(text) {
+    console.log('[sendChatMessage] text:', text, 'started:', started)
     if (!text || !started) return { ok: false, error: 'not connected' }
 
     const config = getKickBotConfig()
