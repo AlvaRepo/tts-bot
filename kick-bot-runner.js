@@ -44,7 +44,7 @@ async function generateCodeChallengeFromVerifier(verifier) {
 
 function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
   const sanitizedText = sanitizeMessage(text)
-  const body = { content: sanitizedText, type: 'user' }
+  const body = { content: sanitizedText, type: 'bot' }
   if (broadcasterUserId) {
     body.broadcaster_user_id = parseInt(broadcasterUserId, 10)
   }
