@@ -346,7 +346,6 @@ export function createKickBotRunner({
       return { ok: false, error: error.message }
     }
   }
-  }
 
   // Expose OAuth helper methods
   async function getOAuthUrl() {
