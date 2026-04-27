@@ -19,28 +19,26 @@ const voiceCommandHandlers = {}
 for (const [name, voice] of Object.entries(VOICE_ALIASES)) {
   voiceCommandHandlers[name.toLowerCase()] = {
     voice,
-    handler: async function({ parsed, event, enqueueMessage, reply, setTtsVoicePreference }) {
+    handler: async function({ parsed, event, enqueueMessage, setTtsVoicePreference }) {
       const text = parsed.args?.join(' ')?.trim() || ''
       
       // Cambiar la voz
       setTtsVoicePreference(voice)
       
       if (!text) {
-        // Solo cambió la voz
-        await reply(`🎤 Voz: ${name}`)
+        // Solo cambió la voz - no responde al chat
         return { handled: true, action: 'voice', voice: name }
       }
       
-      // Cambiar voz y reproducir
-      const result = enqueueMessage({
+      // Cambiar voz y reproducir - NO responde al chat
+      enqueueMessage({
         source: 'command',
         donor_name: event?.username ?? null,
         amount: null,
         text
       })
       
-      await reply(`🎤${name} "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`)
-      return { handled: true, action: 'tts', id: result.id }
+      return { handled: true, action: 'tts' }
     }
   }
 }

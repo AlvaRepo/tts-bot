@@ -17,7 +17,7 @@ const VOICE_ALIASES = {
 export async function ttsHandler({ parsed, event, enqueueMessage, reply, setTtsVoicePreference }) {
   const fullText = parsed.args.join(' ').trim()
   if (!fullText) {
-    await reply("❌ !tts <texto> | Ej: !tomas hola (elige voz)")
+    await reply("❌ !tts <texto> | !elena hola para mudar voz")
     return { handled: true, error: 'missing text' }
   }
 
@@ -46,7 +46,8 @@ export async function ttsHandler({ parsed, event, enqueueMessage, reply, setTtsV
     return { handled: true, error: 'missing text' }
   }
 
-  const result = enqueueMessage({
+  // Agregar a la cola SIN enviar nada al chat
+  enqueueMessage({
     source: 'command',
     donor_name: event?.username ?? null,
     amount: null,
@@ -54,7 +55,6 @@ export async function ttsHandler({ parsed, event, enqueueMessage, reply, setTtsV
     voice: voiceUsed
   })
 
-  const prefix = voiceUsed ? `🎤${firstWord} ` : '📢 '
-  await reply(`${prefix}"${textToSpeak.slice(0, 60)}${textToSpeak.length > 60 ? '...' : ''}" en cola`)
-  return { handled: true, action: 'tts', id: result.id }
+  // No responder al chat - solo reproducir el audio
+  return { handled: true, action: 'tts' }
 }
