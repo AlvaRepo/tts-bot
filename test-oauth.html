@@ -52,7 +52,8 @@
 </div>
 
 <script>
-  const REDIRECT_URI = window.location.origin + window.location.pathname;
+  // Use the Render URL as redirect (required by Kick)
+  const REDIRECT_URI = 'https://tts-bot-alva.onrender.com/oauth/callback';
   let accessToken = null;
   let refreshToken = null;
   let broadcasterUserId = null;
