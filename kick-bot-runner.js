@@ -35,17 +35,16 @@ async function generateCodeChallengeFromVerifier(verifier) {
 }
 
 function buildSendChatRequest(text, bearerToken, broadcasterUserId) {
-  const body = { type: 'bot', content: text }
-  if (broadcasterUserId) {
-    body.broadcaster_user_id = broadcasterUserId
-  }
   return {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${bearerToken}`
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      message: text,
+      ...(broadcasterUserId ? { broadcaster_user_id: parseInt(broadcasterUserId, 10) } : {})
+    })
   }
 }
 
@@ -308,16 +307,10 @@ export function createKickBotRunner({
       return { ok: false, error: 'no access token - complete OAuth setup' }
     }
 
-    const requestBody = { type: 'bot', content: text }
+    const requestBody = { message: text }
     if (broadcasterId) {
-      requestBody.broadcaster_user_id = broadcasterId
+      requestBody.broadcaster_user_id = parseInt(broadcasterId, 10)
     }
-    console.log('[sendChatMessage] Sending:', {
-      token: token.substring(0, 20) + '...',
-      broadcasterId,
-      content: text.substring(0, 50)
-    })
-    console.log('[sendChatMessage] Full body:', JSON.stringify(requestBody))
 
     try {
       const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, {
@@ -329,14 +322,20 @@ export function createKickBotRunner({
         body: JSON.stringify(requestBody)
       })
       const result = await response.json()
-      console.log('[sendChatMessage] Response:', response.status, JSON.stringify(result))
 
       if (response.status === 401 && refreshTokenValue) {
         const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
         if (refreshed.access_token) {
           accessToken = refreshed.access_token
           refreshTokenValue = refreshed.refresh_token
-          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, accessToken, broadcasterId))
+          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(requestBody)
+          })
           const retryResult = await retryResponse.json()
           if (retryResponse.ok && retryResult.data?.message_id) {
             return { ok: true, messageId: retryResult.data.message_id }
