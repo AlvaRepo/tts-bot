@@ -49,6 +49,7 @@ export function createRouter(deps) {
     }
 
     const reply = createReply(sendChatMessage)
+    console.log('[router] reply fn exists:', typeof reply === 'function', 'sendChatMessage:', typeof sendChatMessage)
     return handler({
       event,
       parsed,
