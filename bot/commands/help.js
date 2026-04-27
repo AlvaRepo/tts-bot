@@ -3,9 +3,7 @@
 // =============================
 
 export async function helpHandler({ config, reply }) {
-  const cmds = Object.keys(config.commandPermissions ?? {})
-  const commandList = cmds.map(c => `!${c}`).join(', ')
-  await reply(`Comandos: ${commandList}`)
+  await reply("test")
   return { handled: true, action: 'help' }
 }
 
