@@ -2,7 +2,7 @@
 // Mapa de handlers
 // =============================
 
-import { helpHandler } from './help.js'
+import { helpHandler, helpextraHandler } from './help.js'
 import { statusHandler } from './status.js'
 import { ttsHandler } from './tts.js'
 import { voiceHandler } from './voice.js'
@@ -20,10 +20,11 @@ import { quoteHandler } from './quote.js'
 import { randomquoteHandler } from './randomquote.js'
 import { lurkHandler } from './lurk.js'
 
-export { helpHandler, statusHandler, ttsHandler, voiceHandler, voicesHandler, queueHandler, skipHandler, replayHandler, deleteHandler, cancelHandler, restoreHandler, presetHandler, pokemonHandler, uptimeHandler, quoteHandler, randomquoteHandler, lurkHandler }
+export { helpHandler, helpextraHandler, statusHandler, ttsHandler, voiceHandler, voicesHandler, queueHandler, skipHandler, replayHandler, deleteHandler, cancelHandler, restoreHandler, presetHandler, pokemonHandler, uptimeHandler, quoteHandler, randomquoteHandler, lurkHandler }
 
 export const commandHandlers = {
   help: helpHandler,
+  helpextra: helpextraHandler,
   status: statusHandler,
   tts: ttsHandler,
   voice: voiceHandler,
