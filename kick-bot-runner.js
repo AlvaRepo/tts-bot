@@ -155,11 +155,11 @@ export function createKickBotRunner({
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
+  // Hardcodeado - evitar dependecias de variables de entorno problemáticas
+  const DEFAULT_DOMAIN = 'tts-bot-alva.onrender.com'
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI 
-    ? (process.env.KICK_OAUTH_REDIRECT_URI.startsWith('http') 
-        ? process.env.KICK_OAUTH_REDIRECT_URI 
-        : `https://${process.env.KICK_OAUTH_REDIRECT_URI}`)
-    : `https://${process.env.RENDER_EXTERNAL_URL || 'tts-bot-alva.onrender.com'}/oauth/callback`
+    ? normalizeUrl(process.env.KICK_OAUTH_REDIRECT_URI)
+    : `https://${DEFAULT_DOMAIN}/oauth/callback`
   const BEARER_TOKEN = process.env.KICK_BOT_BEARER
   const REFRESH_TOKEN_ENV = process.env.KICK_BOT_REFRESH_TOKEN
   const BROADCASTER_USER_ID = process.env.KICK_CHANNEL_ID
@@ -450,10 +450,8 @@ export function createKickBotRunner({
     // Guardar codeVerifier para el callback
     lastCustomerCodeVerifier = codeVerifier
     
-    // Usar redirect_uri específico para clientes
-    const baseRedirect = normalizeUrl(OAUTH_REDIRECT_URI)?.replace('/oauth/callback', '') || 'https://tts-bot-alva.onrender.com'
-    const customerRedirectUri = normalizeUrl(process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI) 
-      || `${baseRedirect}/oauth/customer-callback`
+    // Hardcodeado - dominio único y correcto
+    const customerRedirectUri = `https://${DEFAULT_DOMAIN}/oauth/customer-callback`
     const scopes = 'user:read channel:read chat:write'
     const url = buildOAuthUrl(OAUTH_CLIENT_ID, customerRedirectUri, scopes, state, codeChallenge)
     
@@ -477,10 +475,8 @@ export function createKickBotRunner({
       return { ok: false, error: 'No code_verifier available. Please start OAuth flow again.' }
     }
 
-    // Usar redirect_uri específico para clientes
-    const baseRedirect = normalizeUrl(OAUTH_REDIRECT_URI)?.replace('/oauth/callback', '') || 'https://tts-bot-alva.onrender.com'
-    const customerRedirectUri = normalizeUrl(process.env.KICK_OAUTH_CUSTOMER_REDIRECT_URI) 
-      || `${baseRedirect}/oauth/customer-callback`
+    // Hardcodeado - mismo dominio
+    const customerRedirectUri = `https://${DEFAULT_DOMAIN}/oauth/customer-callback`
     
     const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, customerRedirectUri, verifier)
     
