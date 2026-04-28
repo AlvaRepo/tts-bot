@@ -381,6 +381,40 @@ app.get('/api/bot/customer-oauth-url', async (_req, res) => {
   }
 })
 
+// Endpoint: Buscar canal por username (método alternativo kick.com)
+app.get('/api/channel-lookup/:username', async (req, res) => {
+  const { username } = req.params
+  if (!username) {
+    return res.status(400).json({ error: 'Username requerido' })
+  }
+  
+  try {
+    // Usar el método que funciona: kick.com/api/v1/channels/{username}
+    const channelRes = await fetch(`https://kick.com/api/v1/channels/${username}`)
+    const channelData = await channelRes.json()
+    
+    if (!channelRes.ok || channelData?.message === 'Not Found') {
+      return res.status(404).json({ error: 'Canal no encontrado', data: channelData })
+    }
+    
+    // Extraer broadcaster_user_id y chatroom_id
+    const broadcasterId = channelData?.data?.broadcaster_user_id || channelData?.broadcaster_user_id || null
+    const chatroomId = channelData?.data?.chatroom?.id || channelData?.chatroom?.id || null
+    const channelName = channelData?.data?.slug || channelData?.slug || username
+    
+    res.json({
+      ok: true,
+      broadcasterId,
+      chatroomId,
+      channelName,
+      data: channelData
+    })
+  } catch (err) {
+    console.error('[channel-lookup] Error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Callback OAuth para cliente - automático sin copy-paste
 app.get('/oauth/customer-callback', async (req, res) => {
   const { code, error: oauthError, state } = req.query
