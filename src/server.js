@@ -191,6 +191,7 @@ broadcast.clientCount = () => {
 // wss.on('connection', ...) se movió al callback de app.listen()
 
 const app = express()
+app.use(express.static(resolve(__dirname, '../public')))
 app.use(express.json())
 
 app.use('/webhooks', createDonationWebhookRouter({ enqueueMessage: messageService.enqueueMessage }))
