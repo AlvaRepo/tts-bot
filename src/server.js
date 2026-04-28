@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url'
 // __dirname polyfill for ES modules
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+// Force deploy: 01916e3 fix for customer-connect
 
 // Encriptación AES-256 para tokens sensibles
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY // 32 bytes (64 hex chars)
