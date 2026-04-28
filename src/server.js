@@ -688,7 +688,7 @@ app.post('/api/audio-volume', (req, res) => {
 })
 
 app.get('/audio/:id', (req, res) => {
-  const filePath = resolve(`../audio_cache/${req.params.id}.mp3`)
+  const filePath = resolve(__dirname, `../audio_cache/${req.params.id}.mp3`)
   if (!existsSync(filePath)) return res.status(404).json({ error: 'not found' })
   res.sendFile(filePath)
 })
