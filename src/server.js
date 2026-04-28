@@ -733,6 +733,10 @@ app.get('/overlay', (_req, res) => {
   res.type('html').sendFile(filePath)
 })
 
+app.get('/panel.html', (_req, res) => {
+  res.redirect(301, '/panel')
+})
+
 app.get('/panel', (_req, res) => {
   const filePath = resolve(__dirname, '../public/panel.html')
   console.log('[panel] serving file from:', filePath)

@@ -251,3 +251,6 @@ export const Config = {
     this.refreshBot();
   }
 };
+
+// Initialize Config module when DOM is ready
+document.addEventListener('DOMContentLoaded', () => Config.init());

@@ -254,3 +254,6 @@ export const Estado = {
     this.refreshVolume();
   }
 };
+
+// Initialize Estado module when DOM is ready
+document.addEventListener('DOMContentLoaded', () => Estado.init());
