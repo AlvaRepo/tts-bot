@@ -226,7 +226,17 @@
       if (currentId) attemptPlay()
     })
 
-    connect()
-  </script>
+     // Reload overlay periodically to pick up changes (only when idle)
+     setInterval(() => {
+       if (!currentId) {
+         console.log('[overlay] periodic reload (idle)')
+         location.reload()
+       } else {
+         console.log('[overlay] skipping reload, audio playing')
+       }
+     }, 5 * 60 * 1000) // 5 minutes
+
+     connect()
+   </script>
 </body>
 </html>

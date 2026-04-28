@@ -10,7 +10,7 @@ function sanitizeMessage(text) {
   if (!text) return ''
   return text
     .replace(/\n/g, ' ')
-    .replace(/[^\x00-\x7F]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control chars except \t
     .substring(0, 300)
 }
 
@@ -155,8 +155,8 @@ export function createKickBotRunner({
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
   const OAUTH_CLIENT_SECRET = process.env.KICK_OAUTH_CLIENT_SECRET
-  // Hardcodeado - evitar dependecias de variables de entorno problemáticas
-  const DEFAULT_DOMAIN = 'tts-bot-alva.onrender.com'
+  // Usar variable de entorno o default (debe coincidir con el servicio de cada cliente)
+  const DEFAULT_DOMAIN = process.env.KICK_BOT_DOMAIN || 'tts-bot-alva.onrender.com'
   const OAUTH_REDIRECT_URI = process.env.KICK_OAUTH_REDIRECT_URI 
     ? normalizeUrl(process.env.KICK_OAUTH_REDIRECT_URI)
     : `https://${DEFAULT_DOMAIN}/oauth/callback`
@@ -354,36 +354,61 @@ export function createKickBotRunner({
       return { ok: false, error: 'not connected' }
     }
 
-    const config = getKickBotConfig()
-    const token = accessToken || BEARER_TOKEN || config.sessionToken
-    console.log('[sendChat] has token:', !!token, 'token prefix:', token?.substring(0, 10))
+    // Priority: customerAccessToken (token for sending as client) > accessToken (bot's own token) > env vars
+    const token = customerAccessToken || accessToken || BEARER_TOKEN
+    const broadcasterId = customerBroadcasterId || BROADCASTER_USER_ID || null
+    
+    console.log('[sendChat] token source:', customerAccessToken ? 'customer' : (accessToken ? 'bot-access' : 'env-var'))
+    console.log('[sendChat] broadcasterId:', broadcasterId, '(source:', customerBroadcasterId ? 'customer' : 'env', ')')
+    
     if (!token) {
       console.log('[sendChat] no token')
       return { ok: false, error: 'no access token' }
     }
 
-    const broadcasterId = BROADCASTER_USER_ID || null
-    console.log('[sendChat] broadcasterId:', broadcasterId)
-
     try {
-      const requestOpts = buildSendChatRequest(text, token, broadcasterId)
-      console.log('[sendChat] request body:', requestOpts.body)
+      // Always use type: 'user' when we have broadcasterId (better for non-bot accounts)
+      const requestOpts = broadcasterId 
+        ? buildSendChatRequestAsUser(text, token, broadcasterId)
+        : buildSendChatRequest(text, token, broadcasterId)
+      
+      const useType = broadcasterId ? 'user' : 'bot'
+      console.log('[sendChat] Using type:', useType, 'request body:', requestOpts.body)
+      
       const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, requestOpts)
       const result = await response.json()
       console.log('[sendChat] status:', response.status, 'result:', JSON.stringify(result))
 
-      if (response.status === 401 && refreshTokenValue) {
+      // Refresh logic - use the appropriate refresh token
+      const currentRefreshToken = customerRefreshToken || refreshTokenValue
+      if (response.status === 401 && currentRefreshToken) {
         console.log('[sendChat] 401, trying refresh...')
-        const refreshed = await refreshToken(refreshTokenValue, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
+        const refreshed = await refreshToken(currentRefreshToken, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
         if (refreshed.access_token) {
-          accessToken = refreshed.access_token
-          refreshTokenValue = refreshed.refresh_token
-          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, buildSendChatRequest(text, accessToken, broadcasterId))
+          // Update the correct token variable
+          if (customerAccessToken) {
+            customerAccessToken = refreshed.access_token
+            customerRefreshToken = refreshed.refresh_token
+            // Save to DB if callback exists
+            if (onCustomerTokensRefreshed) {
+              await onCustomerTokensRefreshed(customerAccessToken, customerRefreshToken, customerBroadcasterId)
+            }
+          } else {
+            accessToken = refreshed.access_token
+            refreshTokenValue = refreshed.refresh_token
+          }
+          
+          const retryRequest = broadcasterId
+            ? buildSendChatRequestAsUser(text, refreshed.access_token, broadcasterId)
+            : buildSendChatRequest(text, refreshed.access_token, broadcasterId)
+          console.log('[sendChat] Retry request body:', retryRequest.body)
+          const retryResponse = await fetch(`${KICK_API_BASE}/public/v1/chat`, retryRequest)
           const retryResult = await retryResponse.json()
+          console.log('[sendChat] Retry status:', retryResponse.status, 'result:', JSON.stringify(retryResult))
           if (retryResponse.ok && retryResult.data?.message_id) {
             return { ok: true, messageId: retryResult.data.message_id }
           }
-          return { ok: false, error: retryResult.message || 'retry failed' }
+          return { ok: false, error: retryResult.message || 'retry failed', details: retryResult }
         }
       }
 
