@@ -455,11 +455,16 @@ app.get('/oauth/customer-callback', async (req, res) => {
       console.error('[customer-callback] Exchange failed:', result.error)
       res.redirect('/customer-connect?error=' + encodeURIComponent(result.error || 'exchange_failed'))
     }
-  } catch (err) {
+} catch (err) {
     console.error('[customer-callback] Exception:', err.message)
     console.error(err.stack)
     res.redirect('/customer-connect?error=' + encodeURIComponent(err.message))
   }
+})
+
+// Serve la página de conexión del cliente
+app.get('/customer-connect', (_req, res) => {
+  res.type('html').sendFile(resolve('./public/customer-connect.html'))
 })
       // También guardar en memoria del runner (sin encriptar, en memoria RAM)
       kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
