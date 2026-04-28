@@ -466,68 +466,6 @@ app.get('/oauth/customer-callback', async (req, res) => {
 app.get('/customer-connect', (_req, res) => {
   res.type('html').sendFile(resolve('./public/customer-connect.html'))
 })
-        const userData = await userRes.json()
-        
-        console.log('[customer-callback] User data:', JSON.stringify(userData))
-        
-        username = userData?.data?.username || userData?.username || null
-        chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
-        
-        console.log('[customer-callback] Parsed username:', username, 'chatroomId:', chatroomId)
-      } catch (userErr) {
-        console.error('[customer-callback] Failed to fetch user data:', userErr.message)
-      }
-      
-      // Guardar tokens en config
-      const currentConfig = await getKickBotConfig()
-      await setKickBotConfig({
-        ...currentConfig,
-        customerAccessToken: result.accessToken,
-        customerRefreshToken: result.refreshToken,
-        customerBroadcasterId: result.broadcasterId,
-        customerUsername: username,
-        customerChatroomId: chatroomId
-      })
-      
-      // También guardar en memoria del runner
-      kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
-      
-      console.log('[customer-callback] Customer tokens saved successfully')
-      
-      res.redirect('/customer-connect?success=1')
-    } else {
-      console.error('[customer-callback] Exchange failed:', result.error)
-      res.redirect('/customer-connect?error=' + encodeURIComponent(result.error || 'exchange_failed'))
-    }
-} catch (err) {
-    console.error('[customer-callback] Exception:', err.message)
-    console.error(err.stack)
-    res.redirect('/customer-connect?error=' + encodeURIComponent(err.message))
-  }
-})
-
-// Serve la página de conexión del cliente
-app.get('/customer-connect', (_req, res) => {
-  res.type('html').sendFile(resolve('./public/customer-connect.html'))
-})
-      // También guardar en memoria del runner (sin encriptar, en memoria RAM)
-      kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
-      
-      res.redirect('/customer-connect?success=1')
-    } else {
-      console.log('[customer-callback] Exchange failed:', result.error)
-      res.redirect('/customer-connect?error=' + encodeURIComponent(result.error || 'exchange_failed'))
-    }
-  } catch (err) {
-    console.log('[customer-callback] Exception:', err.message)
-    res.redirect('/customer-connect?error=' + encodeURIComponent(err.message))
-  }
-})
-
-// Serve la página de conexión del cliente
-app.get('/customer-connect', (_req, res) => {
-  res.type('html').sendFile(resolve('./public/customer-connect.html'))
-})
 
 app.get('/api/bot/status', async (_req, res) => {
   try {
