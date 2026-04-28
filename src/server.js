@@ -2,8 +2,13 @@ import 'dotenv/config'
 import express from 'express'
 import { WebSocketServer } from 'ws'
 import { existsSync } from 'fs'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
 import crypto from 'crypto'
+import { fileURLToPath } from 'url'
+
+// __dirname polyfill for ES modules
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // Encriptación AES-256 para tokens sensibles
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY // 32 bytes (64 hex chars)
