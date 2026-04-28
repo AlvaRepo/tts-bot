@@ -486,14 +486,40 @@ export function createKickBotRunner({
       let username = null
       let chatroomId = null
       try {
+        // Primero intentar con /users/me (puede fallar)
         const userRes = await fetch(`${KICK_API_BASE}/public/v1/users/me`, {
           headers: { 'Authorization': `Bearer ${result.access_token}` }
         })
         const userData = await userRes.json()
-        broadcasterId = userData?.data?.id || userData?.id
-        username = userData?.data?.username || userData?.username
-        // Obtener chatroom_id para escribir en el chat del cliente
-        chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
+        
+        // Si falla /users/me, intentar obtener del token o usar state
+        if (userData?.message === 'Not Found' || !userData?.data?.id) {
+          console.log('[exchangeCustomerCode] /users/me failed, trying alternative approach')
+          // Intentar obtener del state (channel name) o usar API v2
+          // Por ahora, usar el username del token si está disponible
+          username = userData?.data?.username || userData?.username || null
+          
+          // Si tenemos username, buscar el canal para obtener broadcasterId
+          if (username) {
+            try {
+              const channelRes = await fetch(`${KICK_API_BASE}/public/v1/channels/${username}`, {
+                headers: { 'Authorization': `Bearer ${result.access_token}` }
+              })
+              const channelData = await channelRes.json()
+              broadcasterId = channelData?.data?.broadcaster_user_id || channelData?.broadcaster_user_id || null
+              chatroomId = channelData?.data?.chatroom?.id || channelData?.chatroom?.id || null
+              console.log('[exchangeCustomerCode] Got from channel:', { broadcasterId, chatroomId })
+            } catch (chErr) {
+              console.log('[exchangeCustomerCode] Channel fetch failed:', chErr.message)
+            }
+          }
+        } else {
+          // /users/me funcionó
+          broadcasterId = userData?.data?.id || userData?.id
+          username = userData?.data?.username || userData?.username
+          chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
+        }
+        
         console.log('[exchangeCustomerCode] Customer:', { broadcasterId, username, chatroomId })
       } catch (e) {
         console.log('[exchangeCustomerCode] Failed to get user data:', e.message)
