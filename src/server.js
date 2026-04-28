@@ -75,12 +75,12 @@ import {
   TTS_EMOTION_PRESETS,
   getKickBotConfig,
   setKickBotConfig
-} from './supabase-db.js'
-import { createMessageService } from './message-service.js'
-import { createRouter } from './bot/router.js'
-import { createKickBotRunner } from './kick-bot-runner.js'
-import { createDonationWebhookRouter } from './webhooks/index.js'
-import { queue } from './queue.js'
+} from '../supabase-db.js'
+import { createMessageService } from '../message-service.js'
+import { createRouter } from '../bot/router.js'
+import { createKickBotRunner } from '../kick-bot-runner.js'
+import { createDonationWebhookRouter } from '../webhooks/index.js'
+import { queue } from '../queue.js'
 
 const PORT = parseInt(process.env.PORT ?? '49152', 10)
 const WS_PORT = parseInt(process.env.WS_PORT ?? '49153', 10)
@@ -464,7 +464,7 @@ app.get('/oauth/customer-callback', async (req, res) => {
 
 // Serve la página de conexión del cliente
 app.get('/customer-connect', (_req, res) => {
-  res.type('html').sendFile(resolve('./public/customer-connect.html'))
+  res.type('html').sendFile(resolve('../public/customer-connect.html'))
 })
 
 app.get('/api/bot/status', async (_req, res) => {
@@ -681,23 +681,22 @@ app.post('/api/audio-volume', (req, res) => {
 })
 
 app.get('/audio/:id', (req, res) => {
-  const filePath = resolve(`./audio_cache/${req.params.id}.mp3`)
+  const filePath = resolve(`../audio_cache/${req.params.id}.mp3`)
   if (!existsSync(filePath)) return res.status(404).json({ error: 'not found' })
   res.sendFile(filePath)
 })
 
 app.get('/overlay', (_req, res) => {
-  res.type('html').sendFile(resolve('./public/overlay.html'))
+  res.type('html').sendFile(resolve('../public/overlay.html'))
 })
 
 app.get('/panel', (_req, res) => {
-  console.log('[panel] serving file from:', resolve('./public/panel.html'))
-  res.type('html').sendFile(resolve('./public/panel.html'))
-})
+console.log('[panel] serving file from:', resolve('../public/panel.html'))
+  res.type('html').sendFile(resolve('../public/panel.html'))
 
 app.get('/oauth-setup', (_req, res) => {
-  console.log('[oauth-setup] serving file from:', resolve('./public/oauth-setup.html'))
-  res.type('html').sendFile(resolve('./public/oauth-setup.html'))
+  console.log('[oauth-setup] serving file from:', resolve('../public/oauth-setup.html'))
+  res.type('html').sendFile(resolve('../public/oauth-setup.html'))
 })
 
 // OAuth callback handler - processes the authorization code
