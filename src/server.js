@@ -691,8 +691,9 @@ app.get('/overlay', (_req, res) => {
 })
 
 app.get('/panel', (_req, res) => {
-console.log('[panel] serving file from:', resolve('../public/panel.html'))
+  console.log('[panel] serving file from:', resolve('../public/panel.html'))
   res.type('html').sendFile(resolve('../public/panel.html'))
+})
 
 app.get('/oauth-setup', (_req, res) => {
   console.log('[oauth-setup] serving file from:', resolve('../public/oauth-setup.html'))
