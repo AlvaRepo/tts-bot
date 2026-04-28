@@ -469,7 +469,8 @@ app.get('/oauth/customer-callback', async (req, res) => {
 
 // Serve la página de conexión del cliente
 app.get('/customer-connect', (_req, res) => {
-  res.type('html').sendFile(resolve('../public/customer-connect.html'))
+  const filePath = resolve(__dirname, '../public/customer-connect.html')
+  res.type('html').sendFile(filePath)
 })
 
 app.get('/api/bot/status', async (_req, res) => {
