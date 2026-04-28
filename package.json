@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node src/server.js",
     "test": "node test/smoke.js",
     "check:supabase": "node check-supabase.js",
     "migrate:supabase": "node migrate-to-supabase.js",
