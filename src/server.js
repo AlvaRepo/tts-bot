@@ -687,17 +687,20 @@ app.get('/audio/:id', (req, res) => {
 })
 
 app.get('/overlay', (_req, res) => {
-  res.type('html').sendFile(resolve('../public/overlay.html'))
+  const filePath = resolve(__dirname, '../public/overlay.html')
+  res.type('html').sendFile(filePath)
 })
 
 app.get('/panel', (_req, res) => {
-  console.log('[panel] serving file from:', resolve('../public/panel.html'))
-  res.type('html').sendFile(resolve('../public/panel.html'))
+  const filePath = resolve(__dirname, '../public/panel.html')
+  console.log('[panel] serving file from:', filePath)
+  res.type('html').sendFile(filePath)
 })
 
 app.get('/oauth-setup', (_req, res) => {
-  console.log('[oauth-setup] serving file from:', resolve('../public/oauth-setup.html'))
-  res.type('html').sendFile(resolve('../public/oauth-setup.html'))
+  const filePath = resolve(__dirname, '../public/oauth-setup.html')
+  console.log('[oauth-setup] serving file from:', filePath)
+  res.type('html').sendFile(filePath)
 })
 
 // OAuth callback handler - processes the authorization code
