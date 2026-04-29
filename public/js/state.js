@@ -81,7 +81,7 @@ export const Estado = {
     }
   },
 
-  // Volume control
+  // Volume control for TTS
   async refreshVolume() {
     const data = await this.fetchJSON('/api/audio-volume');
     const volumeSlider = document.getElementById('volumeSlider');
@@ -97,6 +97,26 @@ export const Estado = {
     const data = await this.postJSON('/api/audio-volume', { volume: vol });
     const volumeValue = document.getElementById('volumeValue');
     const volumeStatus = document.getElementById('volumeStatus');
+    if (volumeValue) volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
+    if (volumeStatus) volumeStatus.textContent = `Guardado: ${Math.round(data.volume * 100)}%`;
+  },
+
+  // Volume control for Pokemon cries
+  async refreshPokemonVolume() {
+    const data = await this.fetchJSON('/api/pokemon-audio-volume');
+    const volumeSlider = document.getElementById('pokemonVolumeSlider');
+    const volumeValue = document.getElementById('pokemonVolumeValue');
+    const volumeStatus = document.getElementById('pokemonVolumeStatus');
+    const vol = data.volume ?? 0.3;
+    if (volumeSlider) volumeSlider.value = vol;
+    if (volumeValue) volumeValue.textContent = `${Math.round(vol * 100)}%`;
+    if (volumeStatus) volumeStatus.textContent = `Volumen Pokémon: ${Math.round(vol * 100)}%`;
+  },
+
+  async savePokemonVolume(vol) {
+    const data = await this.postJSON('/api/pokemon-audio-volume', { volume: vol });
+    const volumeValue = document.getElementById('pokemonVolumeValue');
+    const volumeStatus = document.getElementById('pokemonVolumeStatus');
     if (volumeValue) volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
     if (volumeStatus) volumeStatus.textContent = `Guardado: ${Math.round(data.volume * 100)}%`;
   },
@@ -229,6 +249,42 @@ export const Estado = {
       });
     }
 
+    // Pokemon Volume controls
+    const pokemonVolumeSlider = document.getElementById('pokemonVolumeSlider');
+    const pokemonVolumeReset = document.getElementById('pokemonVolumeReset');
+    const pokemonVolumeUp = document.getElementById('pokemonVolumeUp');
+    const pokemonVolumeDown = document.getElementById('pokemonVolumeDown');
+    let pokemonVolumeTimer = null;
+
+    if (pokemonVolumeSlider) {
+      pokemonVolumeSlider.addEventListener('input', () => {
+        clearTimeout(pokemonVolumeTimer);
+        pokemonVolumeTimer = setTimeout(() => {
+          this.savePokemonVolume(parseFloat(pokemonVolumeSlider.value));
+        }, 150);
+      });
+    }
+    if (pokemonVolumeReset) {
+      pokemonVolumeReset.addEventListener('click', () => {
+        if (pokemonVolumeSlider) pokemonVolumeSlider.value = 0.3;
+        this.savePokemonVolume(0.3);
+      });
+    }
+    if (pokemonVolumeUp) {
+      pokemonVolumeUp.addEventListener('click', () => {
+        const newVol = Math.min(2.0, parseFloat(pokemonVolumeSlider.value) + 0.1);
+        if (pokemonVolumeSlider) pokemonVolumeSlider.value = newVol;
+        this.savePokemonVolume(newVol);
+      });
+    }
+    if (pokemonVolumeDown) {
+      pokemonVolumeDown.addEventListener('click', () => {
+        const newVol = Math.max(0.0, parseFloat(pokemonVolumeSlider.value) - 0.1);
+        if (pokemonVolumeSlider) pokemonVolumeSlider.value = newVol;
+        this.savePokemonVolume(newVol);
+      });
+    }
+
     // WebSocket for live updates
     const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsPort = location.port ? `:${location.port}` : '';
@@ -252,6 +308,7 @@ export const Estado = {
     this.refreshHistory();
     this.refreshQueue();
     this.refreshVolume();
+    this.refreshPokemonVolume();
   }
 };
 

@@ -72,11 +72,17 @@
     let endFallbackTimer = null
     let pendingPlayRetry = null
     let audioVolume = 1.0
+    let pokemonAudioVolume = 0.3
 
-    // Fetch volume on load
+    // Fetch volumes on load
     fetch('/api/audio-volume')
       .then(r => r.json())
-      .then(data => { audioVolume = data.volume ?? 0.3 })
+      .then(data => { audioVolume = data.volume ?? 1.0 })
+      .catch(() => {})
+    
+    fetch('/api/pokemon-audio-volume')
+      .then(r => r.json())
+      .then(data => { pokemonAudioVolume = data.volume ?? 0.3 })
       .catch(() => {})
 
     // === TEXT DISPLAY (currently disabled - uncomment to enable) ===
@@ -193,9 +199,9 @@
           player.onerror = () => console.error('[overlay] Audio error! URL:', data.audioUrl, 'Error code:', player.error?.code, 'Message:', player.error?.message)
           // Lower volume for Pokemon cries (audioUrl external), keep normal volume for TTS
           if (data.audioUrl && data.audioUrl.startsWith('http')) {
-            player.volume = 0.3  // 30% for Pokemon cries
+            player.volume = pokemonAudioVolume  // Pokemon cries volume
           } else {
-            player.volume = audioVolume  // Normal volume for TTS
+            player.volume = audioVolume  // Normal TTS volume
           }
           armEndFallback()
           attemptPlay()

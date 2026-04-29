@@ -377,6 +377,26 @@ export function sanitizeAudioVolume(value) {
       return Math.min(2.0, Math.max(0.0, parsed))
     }
   }
+  return 1.0
+}
+
+// Funciones de volumen para sonidos (Pokemon cries)
+export async function getPokemonAudioVolume() {
+  const value = await getSetting('pokemonAudioVolume')
+  return sanitizeAudioVolume(value || 0.3)
+}
+
+export async function setPokemonAudioVolume(value) {
+  const sanitized = sanitizeAudioVolume(value)
+  await setSetting('pokemonAudioVolume', String(sanitized))
+  return sanitized
+}
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value)
+    if (Number.isFinite(parsed)) {
+      return Math.min(2.0, Math.max(0.0, parsed))
+    }
+  }
   return 1.0 // default
 }
 

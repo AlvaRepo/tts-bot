@@ -78,6 +78,8 @@ import {
   sanitizeTtsPresetPreference,
   getAudioVolume,
   setAudioVolume,
+  getPokemonAudioVolume,
+  setPokemonAudioVolume,
   TTS_EMOTION_PRESETS,
   getKickBotConfig,
   setKickBotConfig
@@ -715,6 +717,20 @@ app.get('/api/audio-volume', async (_req, res) => {
 
 app.post('/api/audio-volume', (req, res) => {
   const volume = setAudioVolume(req.body?.volume)
+  res.json({ ok: true, volume })
+})
+
+app.get('/api/pokemon-audio-volume', async (_req, res) => {
+  try {
+    const volume = await getPokemonAudioVolume()
+    res.json({ volume })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/pokemon-audio-volume', (req, res) => {
+  const volume = setPokemonAudioVolume(req.body?.volume)
   res.json({ ok: true, volume })
 })
 
