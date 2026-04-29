@@ -567,14 +567,25 @@ export function createKickBotRunner({
         }
         
         // Fallback: use BROADCASTER_USER_ID from env or config
-        // BUT: BROADCASTER_USER_ID might be the CHANNEL id (5538457), not user_id
-        // If broadcasterId is still null, try BROADCASTER_USER_ID
+        // ASSUMPTION: BROADCASTER_USER_ID should be the USER_ID (not channel id)
         if (!broadcasterId) {
           broadcasterId = BROADCASTER_USER_ID || null
-          console.log('[exchangeCustomerCode] Using fallback BROADCASTER_USER_ID (might be channel id):', broadcasterId)
+          if (broadcasterId) {
+            console.log('[exchangeCustomerCode] Using fallback BROADCASTER_USER_ID as user_id:', broadcasterId)
+          } else {
+            console.error('[exchangeCustomerCode] CRITICAL: No broadcasterId available from any source!')
+          }
         }
         
         console.log('[exchangeCustomerCode] Final Customer:', { broadcasterId, username, chatroomId })
+        
+        // If still no broadcasterId, return error so user knows to provide manually
+        if (!broadcasterId) {
+          return { 
+            ok: false, 
+            error: 'Could not determine user_id. Please set BROADCASTER_USER_ID env var with your Kick user ID (numeric, not channel ID).' 
+          }
+        }
       } catch (e) {
         console.log('[exchangeCustomerCode] Failed to get user data:', e.message)
         // Fallback
