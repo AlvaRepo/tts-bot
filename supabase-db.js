@@ -390,14 +390,7 @@ export async function setPokemonAudioVolume(value) {
   const sanitized = sanitizeAudioVolume(value)
   await setSetting('pokemonAudioVolume', String(sanitized))
   return sanitized
-}
-  if (typeof value === 'string') {
-    const parsed = parseFloat(value)
-    if (Number.isFinite(parsed)) {
-      return Math.min(2.0, Math.max(0.0, parsed))
-    }
   }
-  return 1.0 // default
 }
 
 // Funciones de configuración del bot de Kick
