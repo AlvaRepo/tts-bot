@@ -37,6 +37,7 @@ export function buildMessageRecord(body) {
     status: 'PENDING',
     retries: 0,
     audio_path: null,
+    audioUrl: body.audioUrl ?? null,
     created_at: Date.now(),
     updated_at: Date.now(),
     error_msg: null,
