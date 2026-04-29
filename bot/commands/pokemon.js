@@ -4,13 +4,16 @@
 
 export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
   const nameOrId = parsed.args.join(' ').trim().toLowerCase()
-  if (!nameOrId) {
-    await reply('❌ Faltan parámetros')
-    return { handled: true, error: 'missing name' }
+  // Allow random or no-arg usage
+  let finalNameOrId = nameOrId
+  if (!nameOrId || nameOrId === 'random') {
+    const randomId = Math.floor(Math.random() * 1302) + 1
+    finalNameOrId = randomId.toString()
+    console.log(`[pokemon] Random selected ID: ${randomId}`)
   }
 
   try {
-    const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${nameOrId}`)
+    const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${finalNameOrId}`)
     
     if (!response.ok) {
       await reply('❌ Pokémon no encontrado')
