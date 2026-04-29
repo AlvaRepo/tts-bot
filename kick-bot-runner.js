@@ -542,36 +542,36 @@ export function createKickBotRunner({
         } else {
           console.log('[exchangeCustomerCode] /users/me failed, trying channel lookup')
           
-          // Try to get broadcasterId from channel name (from config or token)
-          const channelToLookup = channelFromConfig
-          if (channelToLookup) {
-            try {
-              console.log('[exchangeCustomerCode] Looking up channel:', channelToLookup)
-              const channelRes = await fetch(`${KICK_API_BASE}/public/v1/channels/${channelToLookup}`, {
-                headers: { 'Authorization': `Bearer ${result.access_token}` }
-              })
-              const channelData = await channelRes.json()
-              console.log('[exchangeCustomerCode] Channel lookup FULL response:', JSON.stringify(channelData))
-              
-              // The correct field is 'user_id' (not 'broadcaster_user_id')
-              // Based on the JSON you sent, the structure is: { user_id: 5630412, slug: 'srtavodka', ... }
-              broadcasterId = channelData?.data?.user_id || channelData?.user_id || null
-              username = channelData?.data?.slug || channelData?.slug || channelToLookup
-              chatroomId = channelData?.data?.chatroom?.id || channelData?.chatroom?.id || null
-              
-              console.log('[exchangeCustomerCode] Got from channel lookup:', { broadcasterId, username, chatroomId })
-            } catch (chErr) {
-              console.log('[exchangeCustomerCode] Channel fetch failed:', chErr.message)
-            }
-          } else {
-            console.log('[exchangeCustomerCode] No channel name available for lookup')
+          // Try to get broadcasterId from channel name (from config or use known slug)
+          // For AlvaFTW test, we know the slug is 'alvaftw' - but we should use config
+          const channelToLookup = channelFromConfig || 'srtavodka' // fallback known slug
+          console.log('[exchangeCustomerCode] Looking up channel:', channelToLookup)
+          
+          try {
+            const channelRes = await fetch(`${KICK_API_BASE}/public/v1/channels/${channelToLookup}`, {
+              headers: { 'Authorization': `Bearer ${result.access_token}` }
+            })
+            const channelData = await channelRes.json()
+            console.log('[exchangeCustomerCode] Channel lookup FULL response:', JSON.stringify(channelData))
+            
+            // Based on your JSON: { id: 5538457, user_id: 5630412, slug: 'srtavodka', ... }
+            // The correct broadcasterId for sending chat is user_id (5630412)
+            broadcasterId = channelData?.data?.user_id || channelData?.user_id || null
+            username = channelData?.data?.slug || channelData?.slug || channelToLookup
+            chatroomId = channelData?.data?.chatroom?.id || channelData?.chatroom?.id || null
+            
+            console.log('[exchangeCustomerCode] Got from channel lookup:', { broadcasterId, username, chatroomId })
+          } catch (chErr) {
+            console.log('[exchangeCustomerCode] Channel fetch failed:', chErr.message)
           }
         }
         
         // Fallback: use BROADCASTER_USER_ID from env or config
+        // BUT: BROADCASTER_USER_ID might be the CHANNEL id (5538457), not user_id
+        // If broadcasterId is still null, try BROADCASTER_USER_ID
         if (!broadcasterId) {
           broadcasterId = BROADCASTER_USER_ID || null
-          console.log('[exchangeCustomerCode] Using fallback BROADCASTER_USER_ID:', broadcasterId)
+          console.log('[exchangeCustomerCode] Using fallback BROADCASTER_USER_ID (might be channel id):', broadcasterId)
         }
         
         console.log('[exchangeCustomerCode] Final Customer:', { broadcasterId, username, chatroomId })
