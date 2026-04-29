@@ -76,7 +76,7 @@
     // Fetch volume on load
     fetch('/api/audio-volume')
       .then(r => r.json())
-      .then(data => { audioVolume = data.volume ?? 1.0 })
+      .then(data => { audioVolume = data.volume ?? 0.3 })
       .catch(() => {})
 
     // === TEXT DISPLAY (currently disabled - uncomment to enable) ===

@@ -358,7 +358,7 @@ export function sanitizeTtsPresetPreference(value) {
 // Funciones de volumen del audio
 export async function getAudioVolume() {
   const value = await getSetting('audioVolume')
-  return sanitizeAudioVolume(value || 1.0)
+  return sanitizeAudioVolume(value || 0.3)
 }
 
 export async function setAudioVolume(value) {
