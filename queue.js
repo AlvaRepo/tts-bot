@@ -4,216 +4,218 @@ import { updateMessage } from './supabase-db.js'
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES ?? '3', 10)
 
 export class MessageQueue {
-  #queue = []
-  #state = 'idle'
-  #current = null
-  #resolveAudio = null
-  #broadcast = null
-  #playbackTimeout = null
+  constructor() {
+    this._queue = []
+    this._state = 'idle'
+    this._current = null
+    this._resolveAudio = null
+    this._broadcast = null
+    this._playbackTimeout = null
+  }
 
   init(broadcastFn) {
-    this.#broadcast = broadcastFn
+    this._broadcast = broadcastFn
   }
 
   add(msg) {
-    if (this.#state === 'stopped') {
-      this.#state = 'idle'
+    if (this._state === 'stopped') {
+      this._state = 'idle'
     }
     msg.status = 'QUEUED'
     updateMessage(msg.id, { status: 'QUEUED' })
-    this.#queue.push(msg)
-    this.#broadcast?.({ type: 'queue:updated', pending: this.#queue.length })
-    if (this.#state === 'idle') void this.#processNext()
+    this._queue.push(msg)
+    this._broadcast?.({ type: 'queue:updated', pending: this._queue.length })
+    if (this._state === 'idle') void this._processNext()
   }
 
   audioEnded(id) {
-    if (this.#current?.id === id && this.#resolveAudio) {
-      this.#clearPlaybackTimeout()
-      this.#resolveAudio()
-      this.#resolveAudio = null
+    if (this._current?.id === id && this._resolveAudio) {
+      this._clearPlaybackTimeout()
+      this._resolveAudio()
+      this._resolveAudio = null
     }
   }
 
   discard(id, reason = 'CANCELLED') {
-    if (this.#current?.id === id && this.#current) {
-      this.#current.status = 'SKIPPED'
+    if (this._current?.id === id && this._current) {
+      this._current.status = 'SKIPPED'
       updateMessage(id, { status: 'SKIPPED', error_msg: reason })
-      this.#clearPlaybackTimeout()
-      this.#broadcast?.({ type: 'message:done', id })
-      if (this.#resolveAudio) {
-        this.#resolveAudio()
-        this.#resolveAudio = null
+      this._clearPlaybackTimeout()
+      this._broadcast?.({ type: 'message:done', id })
+      if (this._resolveAudio) {
+        this._resolveAudio()
+        this._resolveAudio = null
       }
       return true
     }
 
-    const index = this.#queue.findIndex(item => item.id === id)
+    const index = this._queue.findIndex(item => item.id === id)
     if (index === -1) return false
 
-    const [removed] = this.#queue.splice(index, 1)
+    const [removed] = this._queue.splice(index, 1)
     updateMessage(removed.id, { status: 'SKIPPED', error_msg: reason })
-    this.#broadcast?.({ type: 'queue:updated', pending: this.#queue.length })
+    this._broadcast?.({ type: 'queue:updated', pending: this._queue.length })
     return true
   }
 
   control(action) {
     switch (action) {
       case 'pause':
-        if (this.#state === 'playing') {
-          this.#state = 'paused'
-          if (this.#current) {
-            this.#current.status = 'PAUSED'
-            updateMessage(this.#current.id, { status: 'PAUSED' })
-            this.#clearPlaybackTimeout()
+        if (this._state === 'playing') {
+          this._state = 'paused'
+          if (this._current) {
+            this._current.status = 'PAUSED'
+            updateMessage(this._current.id, { status: 'PAUSED' })
+            this._clearPlaybackTimeout()
           }
-          this.#broadcast?.({ type: 'queue:paused' })
+          this._broadcast?.({ type: 'queue:paused' })
         }
         break
       case 'resume':
-        if (this.#state === 'paused') {
-          this.#state = 'playing'
-          if (this.#current) {
-            this.#current.status = 'PLAYING'
-            updateMessage(this.#current.id, { status: 'PLAYING' })
-            this.#armPlaybackTimeout(this.#current)
+        if (this._state === 'paused') {
+          this._state = 'playing'
+          if (this._current) {
+            this._current.status = 'PLAYING'
+            updateMessage(this._current.id, { status: 'PLAYING' })
+            this._armPlaybackTimeout(this._current)
           }
-          this.#broadcast?.({ type: 'queue:resumed' })
+          this._broadcast?.({ type: 'queue:resumed' })
         }
         break
       case 'stop': {
-        this.#state = 'stopped'
-        if (this.#current) {
-          this.#current.status = 'SKIPPED'
-          updateMessage(this.#current.id, { status: 'SKIPPED' })
+        this._state = 'stopped'
+        if (this._current) {
+          this._current.status = 'SKIPPED'
+          updateMessage(this._current.id, { status: 'SKIPPED' })
         }
-        this.#clearPlaybackTimeout()
-        for (const pending of this.#queue) {
+        this._clearPlaybackTimeout()
+        for (const pending of this._queue) {
           updateMessage(pending.id, { status: 'SKIPPED' })
         }
-        this.#queue = []
-        this.#current = null
-        if (this.#resolveAudio) {
-          this.#resolveAudio()
-          this.#resolveAudio = null
+        this._queue = []
+        this._current = null
+        if (this._resolveAudio) {
+          this._resolveAudio()
+          this._resolveAudio = null
         }
-        this.#broadcast?.({ type: 'queue:stopped' })
+        this._broadcast?.({ type: 'queue:stopped' })
         break
       }
       case 'skip':
-        if (this.#current) this.discard(this.#current.id, 'SKIPPED')
+        if (this._current) this.discard(this._current.id, 'SKIPPED')
         break
     }
   }
 
   get pendingCount() {
-    return this.#queue.length
+    return this._queue.length
   }
 
   snapshot() {
     return {
-      state: this.#state,
-      pendingCount: this.#queue.length,
-      current: this.#current
+      state: this._state,
+      pendingCount: this._queue.length,
+      current: this._current
         ? {
-            id: this.#current.id,
-            text: this.#current.text,
-            donor_name: this.#current.donor_name ?? null,
-            amount: this.#current.amount ?? null,
-            status: this.#current.status
+            id: this._current.id,
+            text: this._current.text,
+            donor_name: this._current.donor_name ?? null,
+            amount: this._current.amount ?? null,
+            status: this._current.status
           }
         : null
     }
   }
 
-  async #processNext() {
-    if (this.#queue.length === 0 || this.#state === 'paused' || this.#state === 'stopped') {
-      this.#state = 'idle'
+  async _processNext() {
+    if (this._queue.length === 0 || this._state === 'paused' || this._state === 'stopped') {
+      this._state = 'idle'
       return
     }
 
-    this.#current = this.#queue.shift()
-    this.#state = 'playing'
-    await this.#processMessage(this.#current)
-    this.#current = null
-    void this.#processNext()
+    this._current = this._queue.shift()
+    this._state = 'playing'
+    await this._processMessage(this._current)
+    this._current = null
+    void this._processNext()
   }
 
-    async #processMessage(msg) {
-      let audioPath = null
-      let attempt = 0
+  async _processMessage(msg) {
+    let audioPath = null
+    let attempt = 0
 
-      // Check if we have a direct audio URL (like Pokemon cry)
-      if (msg.audioUrl) {
-       audioPath = msg.audioUrl
-     } else {
-       // Otherwise, synthesize the text
-       while (attempt < MAX_RETRIES && audioPath === null) {
-         updateMessage(msg.id, { status: 'SYNTHESIZING', retries: attempt })
-         try {
-           audioPath = await synthesize(msg.id, msg.text)
-         } catch (err) {
-           attempt += 1
-           if (attempt >= MAX_RETRIES) {
-             updateMessage(msg.id, { status: 'FAILED', error_msg: err.message })
-             this.#broadcast?.({ type: 'message:failed', id: msg.id, error: err.message })
-             return
-           }
-           await sleep(1000 * Math.pow(2, attempt - 1))
-         }
-       }
-     }
-
-      updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
-      msg.status = 'READY'
-      
-      // DEBUG: Log what we're broadcasting
-      const broadcastPayload = {
-        type: 'message:start',
-        id: msg.id,
-        text: msg.text,
-        donor_name: msg.donor_name ?? null,
-        amount: msg.amount ?? null,
-        audioUrl: msg.audioUrl || `/audio/${msg.id}`,
-        metadata: msg.metadata ?? null
+    // Check if we have a direct audio URL (like Pokemon cry)
+    if (msg.audioUrl) {
+      audioPath = msg.audioUrl
+    } else {
+      // Otherwise, synthesize the text
+      while (attempt < MAX_RETRIES && audioPath === null) {
+        updateMessage(msg.id, { status: 'SYNTHESIZING', retries: attempt })
+        try {
+          audioPath = await synthesize(msg.id, msg.text)
+        } catch (err) {
+          attempt += 1
+          if (attempt >= MAX_RETRIES) {
+            updateMessage(msg.id, { status: 'FAILED', error_msg: err.message })
+            this._broadcast?.({ type: 'message:failed', id: msg.id, error: err.message })
+            return
+          }
+          await sleep(1000 * Math.pow(2, attempt - 1))
+        }
       }
-      console.log('[queue] Broadcasting to overlay:', broadcastPayload)
-      
-      this.#broadcast?.(broadcastPayload)
-     })
+    }
+
+    updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
+    msg.status = 'READY'
+    
+    // DEBUG: Log what we're broadcasting
+    const broadcastPayload = {
+      type: 'message:start',
+      id: msg.id,
+      text: msg.text,
+      donor_name: msg.donor_name ?? null,
+      amount: msg.amount ?? null,
+      audioUrl: msg.audioUrl || `/audio/${msg.id}`,
+      metadata: msg.metadata ?? null
+    }
+    console.log('[queue] Broadcasting to overlay:', broadcastPayload)
+    
+    this._broadcast?.(broadcastPayload)
+    
     updateMessage(msg.id, { status: 'PLAYING' })
     msg.status = 'PLAYING'
 
-    this.#armPlaybackTimeout(msg)
+    this._armPlaybackTimeout(msg)
 
     await new Promise(resolve => {
-      this.#resolveAudio = resolve
+      this._resolveAudio = resolve
     })
 
-    this.#clearPlaybackTimeout()
-    this.#resolveAudio = null
+    this._clearPlaybackTimeout()
+    this._resolveAudio = null
 
     if (msg.status !== 'SKIPPED') {
       updateMessage(msg.id, { status: 'DONE' })
-      this.#broadcast?.({ type: 'message:done', id: msg.id })
+      this._broadcast?.({ type: 'message:done', id: msg.id })
     }
   }
 
-  #armPlaybackTimeout(msg) {
-    this.#clearPlaybackTimeout()
+  _armPlaybackTimeout(msg) {
+    this._clearPlaybackTimeout()
 
     const timeoutMs = Math.min(45000, Math.max(8000, msg.text.length * 120))
-    this.#playbackTimeout = setTimeout(() => {
-      if (this.#resolveAudio) {
-        this.#resolveAudio()
-        this.#resolveAudio = null
+    this._playbackTimeout = setTimeout(() => {
+      if (this._resolveAudio) {
+        this._resolveAudio()
+        this._resolveAudio = null
       }
     }, timeoutMs)
-    this.#playbackTimeout.unref?.()
+    this._playbackTimeout.unref?.()
   }
 
-  #clearPlaybackTimeout() {
-    if (this.#playbackTimeout) clearTimeout(this.#playbackTimeout)
-    this.#playbackTimeout = null
+  _clearPlaybackTimeout() {
+    if (this._playbackTimeout) clearTimeout(this._playbackTimeout)
+    this._playbackTimeout = null
   }
 }
 
