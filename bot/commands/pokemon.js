@@ -21,8 +21,11 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
     }
 
     const data = await response.json()
-    
-    // Intentar varias imágenes en orden de prioridad
+     
+     // DEBUG: Log cries data
+     console.log('[pokemon] PokeAPI response cries:', data.cries)
+     
+     // Intentar varias imágenes en orden de prioridad
     const images = [
       data.sprites?.other?.['official-artwork']?.front_default,
       data.sprites?.other?.dream_world?.front_default,

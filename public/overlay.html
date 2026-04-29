@@ -190,6 +190,7 @@
           player.load()
           hint.classList.remove('show')
           player.addEventListener('loadedmetadata', () => armEndFallback(player.duration), { once: true })
+          player.onerror = () => console.error('[overlay] Audio error! URL:', data.audioUrl, 'Error code:', player.error?.code, 'Message:', player.error?.message)
           armEndFallback()
           attemptPlay()
         }

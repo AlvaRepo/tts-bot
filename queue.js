@@ -138,12 +138,12 @@ export class MessageQueue {
     void this.#processNext()
   }
 
-   async #processMessage(msg) {
-     let audioPath = null
-     let attempt = 0
+    async #processMessage(msg) {
+      let audioPath = null
+      let attempt = 0
 
-     // Check if we have a direct audio URL (like Pokemon cry)
-     if (msg.audioUrl) {
+      // Check if we have a direct audio URL (like Pokemon cry)
+      if (msg.audioUrl) {
        audioPath = msg.audioUrl
      } else {
        // Otherwise, synthesize the text
@@ -163,16 +163,22 @@ export class MessageQueue {
        }
      }
 
-     updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
-     msg.status = 'READY'
-     this.#broadcast?.({
-       type: 'message:start',
-       id: msg.id,
-       text: msg.text,
-       donor_name: msg.donor_name ?? null,
-       amount: msg.amount ?? null,
-       audioUrl: msg.audioUrl || `/audio/${msg.id}`,
-       metadata: msg.metadata ?? null
+      updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
+      msg.status = 'READY'
+      
+      // DEBUG: Log what we're broadcasting
+      const broadcastPayload = {
+        type: 'message:start',
+        id: msg.id,
+        text: msg.text,
+        donor_name: msg.donor_name ?? null,
+        amount: msg.amount ?? null,
+        audioUrl: msg.audioUrl || `/audio/${msg.id}`,
+        metadata: msg.metadata ?? null
+      }
+      console.log('[queue] Broadcasting to overlay:', broadcastPayload)
+      
+      this.#broadcast?.(broadcastPayload)
      })
     updateMessage(msg.id, { status: 'PLAYING' })
     msg.status = 'PLAYING'
