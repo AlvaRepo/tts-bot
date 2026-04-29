@@ -191,6 +191,12 @@
           hint.classList.remove('show')
           player.addEventListener('loadedmetadata', () => armEndFallback(player.duration), { once: true })
           player.onerror = () => console.error('[overlay] Audio error! URL:', data.audioUrl, 'Error code:', player.error?.code, 'Message:', player.error?.message)
+          // Lower volume for Pokemon cries (audioUrl external), keep normal volume for TTS
+          if (data.audioUrl && data.audioUrl.startsWith('http')) {
+            player.volume = 0.3  // 30% for Pokemon cries
+          } else {
+            player.volume = audioVolume  // Normal volume for TTS
+          }
           armEndFallback()
           attemptPlay()
         }
