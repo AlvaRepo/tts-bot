@@ -138,36 +138,42 @@ export class MessageQueue {
     void this.#processNext()
   }
 
-  async #processMessage(msg) {
-    let audioPath = null
-    let attempt = 0
+   async #processMessage(msg) {
+     let audioPath = null
+     let attempt = 0
 
-    while (attempt < MAX_RETRIES && audioPath === null) {
-      updateMessage(msg.id, { status: 'SYNTHESIZING', retries: attempt })
-      try {
-        audioPath = await synthesize(msg.id, msg.text)
-      } catch (err) {
-        attempt += 1
-        if (attempt >= MAX_RETRIES) {
-          updateMessage(msg.id, { status: 'FAILED', error_msg: err.message })
-          this.#broadcast?.({ type: 'message:failed', id: msg.id, error: err.message })
-          return
-        }
-        await sleep(1000 * Math.pow(2, attempt - 1))
-      }
-    }
+     // Check if we have a direct audio URL (like Pokemon cry)
+     if (msg.audioUrl) {
+       audioPath = msg.audioUrl
+     } else {
+       // Otherwise, synthesize the text
+       while (attempt < MAX_RETRIES && audioPath === null) {
+         updateMessage(msg.id, { status: 'SYNTHESIZING', retries: attempt })
+         try {
+           audioPath = await synthesize(msg.id, msg.text)
+         } catch (err) {
+           attempt += 1
+           if (attempt >= MAX_RETRIES) {
+             updateMessage(msg.id, { status: 'FAILED', error_msg: err.message })
+             this.#broadcast?.({ type: 'message:failed', id: msg.id, error: err.message })
+             return
+           }
+           await sleep(1000 * Math.pow(2, attempt - 1))
+         }
+       }
+     }
 
-    updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
-    msg.status = 'READY'
-    this.#broadcast?.({
-      type: 'message:start',
-      id: msg.id,
-      text: msg.text,
-      donor_name: msg.donor_name ?? null,
-      amount: msg.amount ?? null,
-      audioUrl: `/audio/${msg.id}`,
-      metadata: msg.metadata ?? null
-    })
+     updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
+     msg.status = 'READY'
+     this.#broadcast?.({
+       type: 'message:start',
+       id: msg.id,
+       text: msg.text,
+       donor_name: msg.donor_name ?? null,
+       amount: msg.amount ?? null,
+       audioUrl: msg.audioUrl || `/audio/${msg.id}`,
+       metadata: msg.metadata ?? null
+     })
     updateMessage(msg.id, { status: 'PLAYING' })
     msg.status = 'PLAYING'
 

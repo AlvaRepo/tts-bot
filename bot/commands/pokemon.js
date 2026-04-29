@@ -29,23 +29,25 @@ export async function pokemonHandler({ parsed, enqueueMessage, reply }) {
 
     const image = images[0] || ''
 
-    const result = {
-      name: data.name,
-      id: data.id,
-      image: image
-    }
+     const result = {
+       name: data.name,
+       id: data.id,
+       image: image,
+       audioUrl: data.cries?.latest || null
+     }
 
-    // Solo dice el nombre
-    const ttsMessage = result.name
+     // Usa el cry del Pokémon si está disponible, sino el nombre
+     const ttsMessage = result.name
     
-    try {
-      const enqueued = enqueueMessage({
-        source: 'command',
-        donor_name: 'pokemon',
-        amount: null,
-        text: ttsMessage,
-        metadata: { image: result.image }
-      })
+     try {
+       const enqueued = enqueueMessage({
+         source: 'command',
+         donor_name: 'pokemon',
+         amount: null,
+         text: ttsMessage,
+         audioUrl: result.audioUrl,
+         metadata: { image: result.image }
+       })
 
       await reply(`🔍 #${result.id} ${result.name}`)
 
