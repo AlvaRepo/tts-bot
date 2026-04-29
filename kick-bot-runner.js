@@ -354,16 +354,51 @@ export function createKickBotRunner({
       return { ok: false, error: 'not connected' }
     }
 
-    // Priority: customerAccessToken (token for sending as client) > accessToken (bot's own token) > env vars
+    // Determine which token to use based on whether we have customer credentials
+    const hasCustomerToken = !!customerAccessToken
     const token = customerAccessToken || accessToken || BEARER_TOKEN
-    const broadcasterId = customerBroadcasterId || BROADCASTER_USER_ID || null
+    const broadcasterId = hasCustomerToken ? customerBroadcasterId : (BROADCASTER_USER_ID || null)
     
-    console.log('[sendChat] token source:', customerAccessToken ? 'customer' : (accessToken ? 'bot-access' : 'env-var'))
-    console.log('[sendChat] broadcasterId:', broadcasterId, '(source:', customerBroadcasterId ? 'customer' : 'env', ')')
+    console.log('[sendChat] token source:', hasCustomerToken ? 'customer' : (accessToken ? 'bot-access' : 'env-var'))
+    console.log('[sendChat] broadcasterId:', broadcasterId, '(source:', hasCustomerToken ? 'customer' : 'env', ')')
     
     if (!token) {
       console.log('[sendChat] no token')
       return { ok: false, error: 'no access token' }
+    }
+    
+    // If using broadcasterId with bot token, that's not going to work - fail early
+    if (broadcasterId && !hasCustomerToken) {
+      console.log('[sendChat] ERROR: Cannot send as type:user without customer token. Need to complete customer OAuth.')
+      return { ok: false, error: 'Missing customer token. Please complete customer OAuth.' }
+    }
+
+    try {
+      // Only use type: 'user' if we have the customer token, otherwise use type: 'bot'
+      const requestOpts = (broadcasterId && hasCustomerToken)
+        ? buildSendChatRequestAsUser(text, token, broadcasterId)
+        : buildSendChatRequest(text, token, broadcasterId)
+      
+      const useType = (broadcasterId && hasCustomerToken) ? 'user' : 'bot'
+      console.log('[sendChat] Using type:', useType, 'request body:', requestOpts.body)
+
+    // Determine which token to use based on whether we have customer credentials
+    const hasCustomerToken = !!customerAccessToken
+    const token = customerAccessToken || accessToken || BEARER_TOKEN
+    const broadcasterId = hasCustomerToken ? customerBroadcasterId : (BROADCASTER_USER_ID || null)
+    
+    console.log('[sendChat] token source:', hasCustomerToken ? 'customer' : (accessToken ? 'bot-access' : 'env-var'))
+    console.log('[sendChat] broadcasterId:', broadcasterId, '(source:', hasCustomerToken ? 'customer' : 'env', ')')
+    
+    if (!token) {
+      console.log('[sendChat] no token')
+      return { ok: false, error: 'no access token' }
+    }
+    
+    // If using broadcasterId with bot token, that's not going to work - fail early
+    if (broadcasterId && !hasCustomerToken) {
+      console.log('[sendChat] ERROR: Cannot send as type:user without customer token. Need to complete customer OAuth.')
+      return { ok: false, error: 'Missing customer token. Please complete customer OAuth flow.' }
     }
 
     try {
@@ -500,60 +535,85 @@ export function createKickBotRunner({
       return { ok: false, error: 'No code_verifier available. Please start OAuth flow again.' }
     }
 
-    // Hardcodeado - mismo dominio
     const customerRedirectUri = `https://${DEFAULT_DOMAIN}/oauth/customer-callback`
     
+    console.log('[exchangeCustomerCode] Exchanging code for tokens...')
     const result = await exchangeCodeForToken(code, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, customerRedirectUri, verifier)
+    console.log('[exchangeCustomerCode] Token exchange FULL result:', JSON.stringify(result))
     
     if (result.access_token) {
       // Obtener el broadcaster_id, username y chatroom_id del cliente
       let broadcasterId = null
       let username = null
       let chatroomId = null
+      
+      // Try to get channel from config first (most reliable)
+      const config = getKickBotConfig()
+      const channelFromConfig = config?.channel || null
+      console.log('[exchangeCustomerCode] Channel from config:', channelFromConfig)
+      
       try {
-        // Primero intentar con /users/me (puede fallar)
+        // Try /users/me first (may fail for some accounts)
+        console.log('[exchangeCustomerCode] Trying /users/me...')
         const userRes = await fetch(`${KICK_API_BASE}/public/v1/users/me`, {
           headers: { 'Authorization': `Bearer ${result.access_token}` }
         })
         const userData = await userRes.json()
+        console.log('[exchangeCustomerCode] /users/me FULL response:', JSON.stringify(userData))
         
-        // Si falla /users/me, intentar obtener del token o usar state
-        if (userData?.message === 'Not Found' || !userData?.data?.id) {
-          console.log('[exchangeCustomerCode] /users/me failed, trying alternative approach')
-          // Intentar obtener del state (channel name) o usar API v2
-          // Por ahora, usar el username del token si está disponible
-          username = userData?.data?.username || userData?.username || null
-          
-          // Si tenemos username, buscar el canal para obtener broadcasterId
-          if (username) {
-            try {
-              const channelRes = await fetch(`${KICK_API_BASE}/public/v1/channels/${username}`, {
-                headers: { 'Authorization': `Bearer ${result.access_token}` }
-              })
-              const channelData = await channelRes.json()
-              broadcasterId = channelData?.data?.broadcaster_user_id || channelData?.broadcaster_user_id || null
-              chatroomId = channelData?.data?.chatroom?.id || channelData?.chatroom?.id || null
-              console.log('[exchangeCustomerCode] Got from channel:', { broadcasterId, chatroomId })
-            } catch (chErr) {
-              console.log('[exchangeCustomerCode] Channel fetch failed:', chErr.message)
-            }
-          }
-        } else {
-          // /users/me funcionó
+        if (userData?.data?.id || userData?.id) {
+          // /users/me worked
           broadcasterId = userData?.data?.id || userData?.id
           username = userData?.data?.username || userData?.username
           chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
+          console.log('[exchangeCustomerCode] /users/me success:', { broadcasterId, username })
+        } else {
+          console.log('[exchangeCustomerCode] /users/me failed, trying channel lookup')
+          
+          // Try to get broadcasterId from channel name (from config or token)
+          const channelToLookup = channelFromConfig
+          if (channelToLookup) {
+            try {
+              console.log('[exchangeCustomerCode] Looking up channel:', channelToLookup)
+              const channelRes = await fetch(`${KICK_API_BASE}/public/v1/channels/${channelToLookup}`, {
+                headers: { 'Authorization': `Bearer ${result.access_token}` }
+              })
+              const channelData = await channelRes.json()
+              console.log('[exchangeCustomerCode] Channel lookup FULL response:', JSON.stringify(channelData))
+              
+              // The correct field is 'user_id' (not 'broadcaster_user_id')
+              // Based on the JSON you sent, the structure is: { user_id: 5630412, slug: 'srtavodka', ... }
+              broadcasterId = channelData?.data?.user_id || channelData?.user_id || null
+              username = channelData?.data?.slug || channelData?.slug || channelToLookup
+              chatroomId = channelData?.data?.chatroom?.id || channelData?.chatroom?.id || null
+              
+              console.log('[exchangeCustomerCode] Got from channel lookup:', { broadcasterId, username, chatroomId })
+            } catch (chErr) {
+              console.log('[exchangeCustomerCode] Channel fetch failed:', chErr.message)
+            }
+          } else {
+            console.log('[exchangeCustomerCode] No channel name available for lookup')
+          }
         }
         
-        console.log('[exchangeCustomerCode] Customer:', { broadcasterId, username, chatroomId })
+        // Fallback: use BROADCASTER_USER_ID from env or config
+        if (!broadcasterId) {
+          broadcasterId = BROADCASTER_USER_ID || null
+          console.log('[exchangeCustomerCode] Using fallback BROADCASTER_USER_ID:', broadcasterId)
+        }
+        
+        console.log('[exchangeCustomerCode] Final Customer:', { broadcasterId, username, chatroomId })
       } catch (e) {
         console.log('[exchangeCustomerCode] Failed to get user data:', e.message)
+        // Fallback
+        broadcasterId = BROADCASTER_USER_ID || null
       }
       
       // Guardar tokens del cliente
       customerAccessToken = result.access_token
       customerRefreshToken = result.refresh_token
       customerBroadcasterId = broadcasterId
+      console.log('[exchangeCustomerCode] Tokens saved in memory:', { hasCustomerAccessToken: !!customerAccessToken, customerBroadcasterId })
       
       return { 
         ok: true, 

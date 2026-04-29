@@ -452,27 +452,23 @@ app.get('/oauth/customer-callback', async (req, res) => {
     // Intercambiar code por tokens para el cliente
     const result = await kickBotRunner.exchangeCustomerCode(code, codeVerifier)
     
-    console.log('[customer-callback] Exchange result:', JSON.stringify(result))
+    console.log('[customer-callback] Exchange FULL result:', JSON.stringify(result))
     
     if (result.ok) {
-      // Obtener datos adicionales del usuario
-      let username = null
-      let chatroomId = null
+      // PRIORIDAD: usar lo que devuelve exchangeCustomerCode (ya tiene la lógica de fallback)
+      const broadcasterId = result.broadcasterId
+      const username = result.username || null
+      const chatroomId = result.chatroomId || null
       
-      try {
-        const userRes = await fetch('https://api.kick.com/public/v1/users/me', {
-          headers: { 'Authorization': `Bearer ${result.accessToken}` }
-        })
-        const userData = await userRes.json()
-        
-        console.log('[customer-callback] User data:', JSON.stringify(userData))
-        
-        username = userData?.data?.username || userData?.username || null
-        chatroomId = userData?.data?.chatroom?.id || userData?.chatroom?.id || null
-        
-        console.log('[customer-callback] Parsed username:', username, 'chatroomId:', chatroomId)
-      } catch (userErr) {
-        console.error('[customer-callback] Failed to fetch user data:', userErr.message)
+      console.log('[customer-callback] Using result data:', { broadcasterId, username, chatroomId })
+      
+      // Si broadcasterId es null, usar fallback de config/env
+      const finalBroadcasterId = broadcasterId || (await getKickBotConfig())?.customerBroadcasterId || process.env.KICK_CHANNEL_ID || null
+      console.log('[customer-callback] Final broadcasterId:', finalBroadcasterId)
+      
+      if (!finalBroadcasterId) {
+        console.error('[customer-callback] CRITICAL: No broadcasterId available!')
+        return res.redirect('/customer-connect?error=no_broadcaster_id')
       }
       
       // Guardar tokens en config
@@ -481,15 +477,15 @@ app.get('/oauth/customer-callback', async (req, res) => {
         ...currentConfig,
         customerAccessToken: result.accessToken,
         customerRefreshToken: result.refreshToken,
-        customerBroadcasterId: result.broadcasterId,
+        customerBroadcasterId: finalBroadcasterId,
         customerUsername: username,
         customerChatroomId: chatroomId
       })
       
       // También guardar en memoria del runner
-      kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, result.broadcasterId)
+      kickBotRunner.setCustomerTokens(result.accessToken, result.refreshToken, finalBroadcasterId)
       
-      console.log('[customer-callback] Customer tokens saved successfully')
+      console.log('[customer-callback] Customer tokens saved successfully with broadcasterId:', finalBroadcasterId)
       
       res.redirect('/customer-connect?success=1')
     } else {
