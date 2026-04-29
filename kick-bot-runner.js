@@ -370,7 +370,7 @@ export function createKickBotRunner({
     // If using broadcasterId with bot token, that's not going to work - fail early
     if (broadcasterId && !hasCustomerToken) {
       console.log('[sendChat] ERROR: Cannot send as type:user without customer token. Need to complete customer OAuth.')
-      return { ok: false, error: 'Missing customer token. Please complete customer OAuth.' }
+      return { ok: false, error: 'Missing customer token. Please complete customer OAuth flow.' }
     }
 
     try {
@@ -380,34 +380,6 @@ export function createKickBotRunner({
         : buildSendChatRequest(text, token, broadcasterId)
       
       const useType = (broadcasterId && hasCustomerToken) ? 'user' : 'bot'
-      console.log('[sendChat] Using type:', useType, 'request body:', requestOpts.body)
-
-    // Determine which token to use based on whether we have customer credentials
-    const hasCustomerToken = !!customerAccessToken
-    const token = customerAccessToken || accessToken || BEARER_TOKEN
-    const broadcasterId = hasCustomerToken ? customerBroadcasterId : (BROADCASTER_USER_ID || null)
-    
-    console.log('[sendChat] token source:', hasCustomerToken ? 'customer' : (accessToken ? 'bot-access' : 'env-var'))
-    console.log('[sendChat] broadcasterId:', broadcasterId, '(source:', hasCustomerToken ? 'customer' : 'env', ')')
-    
-    if (!token) {
-      console.log('[sendChat] no token')
-      return { ok: false, error: 'no access token' }
-    }
-    
-    // If using broadcasterId with bot token, that's not going to work - fail early
-    if (broadcasterId && !hasCustomerToken) {
-      console.log('[sendChat] ERROR: Cannot send as type:user without customer token. Need to complete customer OAuth.')
-      return { ok: false, error: 'Missing customer token. Please complete customer OAuth flow.' }
-    }
-
-    try {
-      // Always use type: 'user' when we have broadcasterId (better for non-bot accounts)
-      const requestOpts = broadcasterId 
-        ? buildSendChatRequestAsUser(text, token, broadcasterId)
-        : buildSendChatRequest(text, token, broadcasterId)
-      
-      const useType = broadcasterId ? 'user' : 'bot'
       console.log('[sendChat] Using type:', useType, 'request body:', requestOpts.body)
       
       const response = await fetch(`${KICK_API_BASE}/public/v1/chat`, requestOpts)
