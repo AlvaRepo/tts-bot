@@ -20,6 +20,7 @@ import { quoteHandler } from './quote.js'
 import { randomquoteHandler } from './randomquote.js'
 import { lurkHandler } from './lurk.js'
 import { voiceHandlers } from './voices-quick.js'
+import { gatitoHandler, gatitoInfoHandler } from './cat.js'
 
 export { helpHandler, helpextraHandler, statusHandler, ttsHandler, voiceHandler, voicesHandler, queueHandler, skipHandler, replayHandler, deleteHandler, cancelHandler, restoreHandler, presetHandler, pokemonHandler, uptimeHandler, quoteHandler, randomquoteHandler, lurkHandler }
 
@@ -42,6 +43,8 @@ export const commandHandlers = {
   quote: quoteHandler,
   randomquote: randomquoteHandler,
   lurk: lurkHandler,
+  gatito: gatitoHandler,
+  gatitoInfo: gatitoInfoHandler,
   // Comandos de voz rápida
   tomas: voiceHandlers.tomas.handler,
   elena: voiceHandlers.elena.handler,
