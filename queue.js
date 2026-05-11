@@ -1,7 +1,10 @@
 import { synthesize } from './tts.js'
-import { updateMessage } from './supabase-db.js'
+import { getHistory, updateMessage } from './supabase-db.js'
 
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES ?? '3', 10)
+const REHYDRATION_LIMIT = parseInt(process.env.REHYDRATION_LIMIT ?? '1000', 10)
+const RECOVERABLE_STATUSES = new Set(['QUEUED', 'SYNTHESIZING', 'READY', 'PLAYING', 'PAUSED'])
+const TTS_MOCK = ['1', 'true', 'yes', 'on'].includes(String(process.env.TTS_MOCK ?? '').trim().toLowerCase())
 
 function persistUpdate(id, fields, context) {
   void updateMessage(id, fields).catch(error => {
@@ -10,13 +13,15 @@ function persistUpdate(id, fields, context) {
 }
 
 export class MessageQueue {
-  constructor() {
+  constructor({ loadRecoverableMessages = loadDefaultRecoverableMessages } = {}) {
     this._queue = []
     this._state = 'idle'
     this._current = null
     this._resolveAudio = null
     this._broadcast = null
     this._playbackTimeout = null
+    this._loadRecoverableMessages = loadRecoverableMessages
+    this._rehydrated = false
   }
 
   init(broadcastFn) {
@@ -32,6 +37,41 @@ export class MessageQueue {
     this._queue.push(msg)
     this._broadcast?.({ type: 'queue:updated', pending: this._queue.length })
     if (this._state === 'idle') void this._processNext()
+  }
+
+  async rehydrate() {
+    if (this._rehydrated) {
+      return { recoveredCount: this._queue.length, alreadyRehydrated: true }
+    }
+
+    const messages = await this._loadRecoverableMessages()
+    const recovered = [...messages]
+      .filter(message => message && RECOVERABLE_STATUSES.has(message.status))
+      .sort((a, b) => new Date(a.created_at ?? a.updated_at ?? 0) - new Date(b.created_at ?? b.updated_at ?? 0))
+      .map(message => ({ ...message, status: 'QUEUED' }))
+
+    for (const message of recovered) {
+      persistUpdate(message.id, { status: 'QUEUED' }, 'rehydrate')
+    }
+
+    this._queue = recovered
+    this._current = null
+    this._state = 'idle'
+    this._rehydrated = true
+    this._broadcast?.({ type: 'queue:updated', pending: this._queue.length, hydrated: true })
+
+    return { recoveredCount: recovered.length, alreadyRehydrated: false }
+  }
+
+  start() {
+    if (this._state === 'stopped') this._state = 'idle'
+    if (this._state === 'idle' && this._queue.length > 0) {
+      void this._processNext()
+    }
+    return {
+      state: this._state,
+      pendingCount: this._queue.length
+    }
   }
 
   audioEnded(id) {
@@ -204,6 +244,15 @@ export class MessageQueue {
     msg.status = 'PLAYING'
 
     this._armPlaybackTimeout(msg)
+    if (TTS_MOCK) {
+      const mockDoneTimer = setTimeout(() => {
+        if (this._resolveAudio) {
+          this._resolveAudio()
+          this._resolveAudio = null
+        }
+      }, 50)
+      mockDoneTimer.unref?.()
+    }
 
     await new Promise(resolve => {
       this._resolveAudio = resolve
@@ -242,3 +291,8 @@ function sleep(ms) {
 }
 
 export const queue = new MessageQueue()
+
+async function loadDefaultRecoverableMessages() {
+  const history = await getHistory(REHYDRATION_LIMIT)
+  return history.filter(message => RECOVERABLE_STATUSES.has(message.status))
+}

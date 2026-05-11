@@ -10,53 +10,79 @@
  * @param {Object} options.logger - Logger instance (defaults to console)
  * @returns {Object} Resilience object with health/ready helpers and shutdown method
  */
-export function createResilience({ server, wss, kickBotRunner, queue, logger = console }) {
+export function createResilience({ server, wss, kickBotRunner, queue, bootStatus = {}, exitProcess = code => process.exit(code), logger = console }) {
   let shuttingDown = false;
   const startTime = Date.now();
 
-  // Global error handlers
-  process.on('unhandledRejection', (reason, promise) => {
+  const isBootReady = () => bootStatus.hydrated === true && !bootStatus.error;
+  const onUnhandledRejection = (reason, promise) => {
     logger.error('[resilience] Unhandled Rejection at:', promise, 'reason:', reason);
-    // Don't exit here - let shutdown handle it gracefully if needed
-  });
-
-  process.on('uncaughtException', (error) => {
-    logger.error('[resilience] Uncaught Exception:', error);
-    logger.error('[resilience] Stack trace:', error.stack);
-    // Initiate graceful shutdown on uncaught exceptions
     if (!shuttingDown) {
       shuttingDown = true;
-      shutdown().catch(finalError => {
-        logger.error('[resilience] Error during shutdown after uncaught exception:', finalError);
-        process.exit(1);
+      shutdown(1).catch(finalError => {
+        logger.error('[resilience] Error during shutdown after unhandled rejection:', finalError);
+        exitProcess(1);
       });
     }
-  });
+  };
+
+  const onUncaughtException = (error) => {
+    logger.error('[resilience] Uncaught Exception:', error);
+    logger.error('[resilience] Stack trace:', error.stack);
+    if (!shuttingDown) {
+      shuttingDown = true;
+      shutdown(1).catch(finalError => {
+        logger.error('[resilience] Error during shutdown after uncaught exception:', finalError);
+        exitProcess(1);
+      });
+    }
+  };
+
+  const onSigterm = () => {
+    logger.info('[resilience] SIGTERM received, initiating graceful shutdown');
+    if (!shuttingDown) {
+      shuttingDown = true;
+      shutdown(0);
+    }
+  };
+
+  const onSigint = () => {
+    logger.info('[resilience] SIGINT received, initiating graceful shutdown');
+    if (!shuttingDown) {
+      shuttingDown = true;
+      shutdown(0);
+    }
+  };
+
+  const removeListeners = () => {
+    process.off('unhandledRejection', onUnhandledRejection);
+    process.off('uncaughtException', onUncaughtException);
+    process.off('SIGTERM', onSigterm);
+    process.off('SIGINT', onSigint);
+  };
+
+  // Global error handlers
+  process.on('unhandledRejection', onUnhandledRejection);
+  process.on('uncaughtException', onUncaughtException);
 
   // OS signal handlers for graceful shutdown
   const setupSignalHandlers = () => {
-    process.on('SIGTERM', () => {
-      logger.info('[resilience] SIGTERM received, initiating graceful shutdown');
-      if (!shuttingDown) {
-        shuttingDown = true;
-        shutdown();
-      }
-    });
-
-    process.on('SIGINT', () => {
-      logger.info('[resilience] SIGINT received, initiating graceful shutdown');
-      if (!shuttingDown) {
-        shuttingDown = true;
-        shutdown();
-      }
-    });
+    process.on('SIGTERM', onSigterm);
+    process.on('SIGINT', onSigint);
   };
 
   // Shutdown orchestrator
-  const shutdown = async () => {
+  const shutdown = async (exitCode = 0) => {
     logger.info('[resilience] Shutdown initiated');
+    let forcedExit = null;
 
     try {
+      forcedExit = setTimeout(() => {
+        logger.warn('[resilience] Force exiting after timeout');
+        exitProcess(exitCode || 1);
+      }, 30000);
+      forcedExit.unref?.();
+
       // 1. Stop accepting new work (already handled by signal prevention)
       
       // 2. Drain queue (stop accepting new jobs, process existing)
@@ -101,13 +127,9 @@ export function createResilience({ server, wss, kickBotRunner, queue, logger = c
       // Continue with force exit
     }
 
-    // Force exit after timeout to prevent hanging
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        logger.warn('[resilience] Force exiting after timeout');
-        process.exit(0);
-      }, 30000).unref(); // 30 second force-exit timeout
-    });
+    if (forcedExit) clearTimeout(forcedExit);
+    removeListeners();
+    exitProcess(exitCode);
   };
 
   // Health helper - basic liveness
@@ -123,8 +145,10 @@ export function createResilience({ server, wss, kickBotRunner, queue, logger = c
       kickBotRunner.isStarted();
     
     return {
-      status: shuttingDown ? 'shuttingdown' : (isBotConnected ? 'ok' : 'degraded'),
+      status: shuttingDown ? 'shuttingdown' : (isBootReady() ? 'ok' : 'degraded'),
       connected: !!isBotConnected,
+      hydrated: !!bootStatus.hydrated,
+      bootError: bootStatus.error ?? null,
       uptime: Date.now() - startTime
     };
   };

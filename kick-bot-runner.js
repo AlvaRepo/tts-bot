@@ -88,6 +88,11 @@ function buildSendChatRequestAsUser(text, bearerToken, broadcasterUserId) {
   }
 }
 
+export function computeReconnectDelay(attempt, rng = Math.random) {
+  const safeAttempt = Math.max(0, Number(attempt) || 0)
+  return Math.min(60000, 1000 * 2 ** safeAttempt) * (0.5 + rng() * 0.5)
+}
+
 // OAuth helpers
 function buildOAuthUrl(clientId, redirectUri, scope, state, codeChallenge) {
   const url = new URL(`${KICK_OAUTH_BASE}/oauth/authorize`)
@@ -152,7 +157,8 @@ export function createKickBotRunner({
    let channel = null
    let chatroomId = null
    let _shuttingDown = false
-   let _attempt = 0
+    let _attempt = 0
+    let _reconnectTimer = null
 
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
@@ -312,9 +318,9 @@ export function createKickBotRunner({
         updateBotRuntime({ connected: false, lastError: String(error) })
       }
 
-       ws.onclose = () => {
-         updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
-         started = false
+      ws.onclose = () => {
+        updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
+        started = false
          
          // Handle reconnection with backoff unless shutting down
          if (_shuttingDown) {
@@ -322,20 +328,18 @@ export function createKickBotRunner({
            return;
          }
          
-         _attempt++;
-         if (_attempt >= 15) {
-           logger.error('[kick-bot] Max reconnection attempts reached (15), giving up');
-           return;
-         }
-         
-         // Calculate delay with exponential backoff and jitter
-         const delay = Math.min(60000, 1000 * 2 ** _attempt) * (0.5 + Math.random() * 0.5);
-         logger.info(`[kick-bot] Reconnecting in ${Math.round(delay)}ms (attempt ${_attempt}/15)`);
-         
-         setTimeout(() => {
-           start(); // This will create a new WebSocket connection
-         }, delay);
-       }
+        _attempt++;
+
+        // Calculate delay with exponential backoff and jitter
+        const delay = computeReconnectDelay(_attempt)
+        logger.info(`[kick-bot] Reconnecting in ${Math.round(delay)}ms (attempt ${_attempt})`);
+
+        if (_reconnectTimer) clearTimeout(_reconnectTimer)
+        _reconnectTimer = setTimeout(() => {
+          _reconnectTimer = null
+          start(); // This will create a new WebSocket connection
+        }, delay);
+      }
 
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
@@ -359,11 +363,15 @@ export function createKickBotRunner({
     }
   }
 
-   async function stop() {
-     _shuttingDown = true;
-     try {
-       ws?.close()
-     } catch {}
+    async function stop() {
+      _shuttingDown = true;
+      if (_reconnectTimer) {
+        clearTimeout(_reconnectTimer)
+        _reconnectTimer = null
+      }
+      try {
+        ws?.close()
+      } catch {}
      started = false
      ws = null
      updateBotRuntime({ connected: false })

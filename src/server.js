@@ -169,6 +169,7 @@ kickBotRunnerRef = kickBotRunner
 
 let wss = null // Se inicializará cuando el servidor HTTP esté listo
 let resilience = null
+const bootStatus = { hydrated: false, error: null }
 
 function broadcast(event) {
   if (!wss) return // Early exit si WebSocket no está listo
@@ -875,14 +876,29 @@ const server = app.listen(PORT, () => {
      console.error('❌ Error creando WebSocketServer:', error)
    }
 
-   // Initialize process resilience
-   resilience = createResilience({ server, wss, kickBotRunner, queue })
+    // Initialize process resilience
+    resilience = createResilience({ server, wss, kickBotRunner, queue, bootStatus })
 
-   void kickBotRunner.start().catch(error => {
-     updateBotRuntime({ connected: false, lastError: error.message })
-     console.error('[kick-bot] failed to start:', error)
-   })
- })
+    void queue.rehydrate()
+      .then(result => {
+        bootStatus.hydrated = true
+        bootStatus.error = null
+        console.log(`[boot] rehydrated ${result.recoveredCount} queued message(s)`)
+        queue.start()
+        return kickBotRunner.start()
+      })
+      .then(result => {
+        if (result?.started) {
+          console.log('[kick-bot] started after rehydration')
+        }
+      })
+      .catch(error => {
+        bootStatus.hydrated = false
+        bootStatus.error = error.message
+        updateBotRuntime({ connected: false, lastError: error.message })
+        console.error('[boot] queue rehydration failed:', error)
+      })
+  })
 
 // Al iniciar, cargar y desencriptar tokens del cliente desde Supabase
 async function loadCustomerTokensOnStartup() {
