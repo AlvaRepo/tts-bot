@@ -5,6 +5,7 @@ import { existsSync } from 'fs'
 import { resolve, dirname } from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
+import { createResilience } from './process-resilience.js'
 
 // __dirname polyfill for ES modules
 const __filename = fileURLToPath(import.meta.url)
@@ -97,7 +98,7 @@ const RUNTIME_AUDIO_PROFILE = 'auto'
 
 initDB()
 
-const bootAudioProfilePreference = getAudioProfilePreference()
+const bootAudioProfilePreference = await getAudioProfilePreference()
 const bootAudioProfile = resolveAudioProfile(bootAudioProfilePreference, RUNTIME_AUDIO_PROFILE)
 let currentAudioProfilePreference = bootAudioProfilePreference
 
@@ -126,17 +127,17 @@ function updateBotRuntime(patch) {
 let kickBotRunnerRef = null
 
 const kickBotRouter = createRouter({
-  getConfig: getKickBotConfig,
-  updateRuntime: updateBotRuntime,
-  sendChatMessage: (text) => kickBotRunnerRef?.sendChatMessage?.(text),
-  queue,
-  enqueueMessage: messageService.enqueueMessage,
-  getHistory,
-  getMessage,
-  deleteMessage,
-  setTtsVoicePreference,
-  setTtsPresetPreference
-})
+   getConfig: getKickBotConfig,
+   updateRuntime: updateBotRuntime,
+   sendChatMessage: (text) => kickBotRunnerRef?.sendChatMessage?.(text),
+   queue,
+   enqueueMessage: messageService.enqueueMessage,
+   getHistory,
+   getMessage,
+   deleteMessage,
+   setTtsVoicePreference,
+   setTtsPresetPreference
+});
 
 const kickBotRunner = createKickBotRunner({
   getKickBotConfig,
@@ -167,6 +168,7 @@ const kickBotRunner = createKickBotRunner({
 kickBotRunnerRef = kickBotRunner
 
 let wss = null // Se inicializará cuando el servidor HTTP esté listo
+let resilience = null
 
 function broadcast(event) {
   if (!wss) return // Early exit si WebSocket no está listo
@@ -198,6 +200,16 @@ app.use(express.json())
 
 app.use('/webhooks', createDonationWebhookRouter({ enqueueMessage: messageService.enqueueMessage }))
 
+app.get('/health', (_req, res) => {
+  const payload = resilience?.health?.() ?? { status: 'booting', uptime: 0 }
+  res.status(200).json(payload)
+})
+
+app.get('/ready', (_req, res) => {
+  const payload = resilience?.ready?.() ?? { status: 'degraded', connected: false, uptime: 0 }
+  res.status(payload.status === 'ok' ? 200 : 503).json(payload)
+})
+
 app.post('/api/message', (req, res) => {
   messageService.handleHttpMessage(req, res)
 })
@@ -222,7 +234,9 @@ app.post('/api/message/:id/cancel', async (req, res) => {
 
   const removed = queue.discard(message.id, reason)
   if (!removed) {
-    updateMessage(message.id, { status: 'SKIPPED', error_msg: reason })
+    void updateMessage(message.id, { status: 'SKIPPED', error_msg: reason }).catch(error => {
+      console.error('[cancel-message] update failed:', error?.message ?? error)
+    })
   }
 
   res.json({ ok: true })
@@ -306,12 +320,16 @@ app.get('/api/filters', async (_req, res) => {
   }
 })
 
-app.post('/api/filters', (req, res) => {
-  const config = setMessageFilterConfig({
-    enabled: Boolean(req.body?.enabled),
-    blacklist: Array.isArray(req.body?.blacklist) ? req.body.blacklist : String(req.body?.blacklist ?? '').split(',')
-  })
-  res.json({ ok: true, ...config })
+app.post('/api/filters', async (req, res) => {
+  try {
+    const config = await setMessageFilterConfig({
+      enabled: Boolean(req.body?.enabled),
+      blacklist: Array.isArray(req.body?.blacklist) ? req.body.blacklist : String(req.body?.blacklist ?? '').split(',')
+    })
+    res.json({ ok: true, ...config })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 app.get('/api/bot/config', async (_req, res) => {
@@ -323,9 +341,13 @@ app.get('/api/bot/config', async (_req, res) => {
   }
 })
 
-app.post('/api/bot/config', (req, res) => {
-  const config = setKickBotConfig(req.body ?? {})
-  res.json({ ok: true, ...config })
+app.post('/api/bot/config', async (req, res) => {
+  try {
+    const config = await setKickBotConfig(req.body ?? {})
+    res.json({ ok: true, ...config })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 })
 
 // Endpoint para guardar los tokens del cliente (para TTS en canal del cliente)
@@ -792,72 +814,75 @@ app.get('/oauth/callback', (req, res) => {
 })
 
 const server = app.listen(PORT, () => {
-  console.log(`HTTP  → http://localhost:${PORT}`)
-  console.log(`WS    → ws://localhost:${PORT}`)
-  console.log(`Panel → http://localhost:${PORT}/panel`)
-  console.log(`OBS   → http://localhost:${PORT}/overlay`)
-  
-  // WebSocket en el mismo servidor HTTP
-  try {
-    wss = new WebSocketServer({ server })
-    console.log('✅ WebSocket conectado al servidor HTTP en puerto', PORT)
+   console.log(`HTTP  → http://localhost:${PORT}`)
+   console.log(`WS    → ws://localhost:${PORT}`)
+   console.log(`Panel → http://localhost:${PORT}/panel`)
+   console.log(`OBS   → http://localhost:${PORT}/overlay`)
+   
+   // WebSocket en el mismo servidor HTTP
+   try {
+     wss = new WebSocketServer({ server })
+     console.log('✅ WebSocket conectado al servidor HTTP en puerto', PORT)
 
-    wss.on('connection', (ws, req) => {
-      const url = new URL(req.url, 'http://localhost')
-      ws.clientType = url.searchParams.get('client') ?? 'unknown'
+     wss.on('connection', (ws, req) => {
+       const url = new URL(req.url, 'http://localhost')
+       ws.clientType = url.searchParams.get('client') ?? 'unknown'
 
-      ws.on('message', raw => {
-        try {
-          const event = JSON.parse(raw.toString())
-          if (event.type === 'audio:ended' && event.id) queue.audioEnded(event.id)
-        } catch {
-          // ignore malformed messages
-        }
-      })
-    })
+       ws.on('message', raw => {
+         try {
+           const event = JSON.parse(raw.toString())
+           if (event.type === 'audio:ended' && event.id) queue.audioEnded(event.id)
+         } catch {
+           // ignore malformed messages
+         }
+       })
+     })
 
-    queue.init(broadcast)
+     queue.init(broadcast)
 
-    // Agregar listener para enviar TTS al chat del cliente cuando esté listo
-    const originalBroadcast = broadcast
-    broadcast = function(event) {
-      // Primero ejecutar el broadcast original
-      originalBroadcast(event)
-      
-      // Cuando un mensaje TTS está por reproducirse, enviarlo al chat del cliente
-      if (event.type === 'message:start' && event.text) {
-        const text = event.text
-        
-        // Solo enviar si hay un cliente configurado
-        const botRunner = kickBotRunnerRef
-        const customerTokens = botRunner?.getCustomerTokens?.() || {}
-        
-        if (customerTokens.broadcasterId && customerTokens.accessToken) {
-          console.log('[TTS->Chat] Sending to customer channel:', text.substring(0, 50), 'broadcasterId:', customerTokens.broadcasterId)
-          
-          botRunner.sendChatMessageAsUser(text).then(result => {
-            if (result.ok) {
-              console.log('[TTS->Chat] Message sent to customer:', result.messageId)
-            } else {
-              console.log('[TTS->Chat] Failed:', result.error)
-            }
-          }).catch(err => {
-            console.log('[TTS->Chat] Exception:', err.message)
-          })
-        } else {
-          console.log('[TTS->Chat] No customer configured, skipping')
-        }
-      }
-    }
-  } catch (error) {
-    console.error('❌ Error creando WebSocketServer:', error)
-  }
-})
+     // Agregar listener para enviar TTS al chat del cliente cuando esté listo
+     const originalBroadcast = broadcast
+     broadcast = function(event) {
+       // Primero ejecutar el broadcast original
+       originalBroadcast(event)
+       
+       // Cuando un mensaje TTS está por reproducirse, enviarlo al chat del cliente
+       if (event.type === 'message:start' && event.text) {
+         const text = event.text
+         
+         // Solo enviar si hay un cliente configurado
+         const botRunner = kickBotRunnerRef
+         const customerTokens = botRunner?.getCustomerTokens?.() || {}
+         
+         if (customerTokens.broadcasterId && customerTokens.accessToken) {
+           console.log('[TTS->Chat] Sending to customer channel:', text.substring(0, 50), 'broadcasterId:', customerTokens.broadcasterId)
+           
+           botRunner.sendChatMessageAsUser(text).then(result => {
+             if (result.ok) {
+               console.log('[TTS->Chat] Message sent to customer:', result.messageId)
+             } else {
+               console.log('[TTS->Chat] Failed:', result.error)
+             }
+           }).catch(err => {
+             console.log('[TTS->Chat] Exception:', err.message)
+           })
+         } else {
+           console.log('[TTS->Chat] No customer configured, skipping')
+         }
+       }
+     }
+   } catch (error) {
+     console.error('❌ Error creando WebSocketServer:', error)
+   }
 
-void kickBotRunner.start().catch(error => {
-  updateBotRuntime({ connected: false, lastError: error.message })
-  console.error('[kick-bot] failed to start:', error)
-})
+   // Initialize process resilience
+   resilience = createResilience({ server, wss, kickBotRunner, queue })
+
+   void kickBotRunner.start().catch(error => {
+     updateBotRuntime({ connected: false, lastError: error.message })
+     console.error('[kick-bot] failed to start:', error)
+   })
+ })
 
 // Al iniciar, cargar y desencriptar tokens del cliente desde Supabase
 async function loadCustomerTokensOnStartup() {

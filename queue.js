@@ -3,6 +3,12 @@ import { updateMessage } from './supabase-db.js'
 
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES ?? '3', 10)
 
+function persistUpdate(id, fields, context) {
+  void updateMessage(id, fields).catch(error => {
+    console.error(`[queue] ${context} failed for ${id}:`, error?.message ?? error)
+  })
+}
+
 export class MessageQueue {
   constructor() {
     this._queue = []
@@ -22,7 +28,7 @@ export class MessageQueue {
       this._state = 'idle'
     }
     msg.status = 'QUEUED'
-    updateMessage(msg.id, { status: 'QUEUED' })
+    persistUpdate(msg.id, { status: 'QUEUED' }, 'queue.add')
     this._queue.push(msg)
     this._broadcast?.({ type: 'queue:updated', pending: this._queue.length })
     if (this._state === 'idle') void this._processNext()
@@ -39,7 +45,7 @@ export class MessageQueue {
   discard(id, reason = 'CANCELLED') {
     if (this._current?.id === id && this._current) {
       this._current.status = 'SKIPPED'
-      updateMessage(id, { status: 'SKIPPED', error_msg: reason })
+      persistUpdate(id, { status: 'SKIPPED', error_msg: reason }, 'discard-current')
       this._clearPlaybackTimeout()
       this._broadcast?.({ type: 'message:done', id })
       if (this._resolveAudio) {
@@ -53,7 +59,7 @@ export class MessageQueue {
     if (index === -1) return false
 
     const [removed] = this._queue.splice(index, 1)
-    updateMessage(removed.id, { status: 'SKIPPED', error_msg: reason })
+    persistUpdate(removed.id, { status: 'SKIPPED', error_msg: reason }, 'discard-pending')
     this._broadcast?.({ type: 'queue:updated', pending: this._queue.length })
     return true
   }
@@ -65,7 +71,7 @@ export class MessageQueue {
           this._state = 'paused'
           if (this._current) {
             this._current.status = 'PAUSED'
-            updateMessage(this._current.id, { status: 'PAUSED' })
+            persistUpdate(this._current.id, { status: 'PAUSED' }, 'pause')
             this._clearPlaybackTimeout()
           }
           this._broadcast?.({ type: 'queue:paused' })
@@ -76,7 +82,7 @@ export class MessageQueue {
           this._state = 'playing'
           if (this._current) {
             this._current.status = 'PLAYING'
-            updateMessage(this._current.id, { status: 'PLAYING' })
+            persistUpdate(this._current.id, { status: 'PLAYING' }, 'resume')
             this._armPlaybackTimeout(this._current)
           }
           this._broadcast?.({ type: 'queue:resumed' })
@@ -86,11 +92,11 @@ export class MessageQueue {
         this._state = 'stopped'
         if (this._current) {
           this._current.status = 'SKIPPED'
-          updateMessage(this._current.id, { status: 'SKIPPED' })
+          persistUpdate(this._current.id, { status: 'SKIPPED' }, 'stop-current')
         }
         this._clearPlaybackTimeout()
         for (const pending of this._queue) {
-          updateMessage(pending.id, { status: 'SKIPPED' })
+          persistUpdate(pending.id, { status: 'SKIPPED' }, 'stop-pending')
         }
         this._queue = []
         this._current = null
@@ -135,9 +141,21 @@ export class MessageQueue {
 
     this._current = this._queue.shift()
     this._state = 'playing'
-    await this._processMessage(this._current)
-    this._current = null
-    void this._processNext()
+    const current = this._current
+
+    try {
+      await this._processMessage(current)
+    } catch (error) {
+      console.error('[queue] Unhandled playback error:', error)
+      if (current) {
+        current.status = 'FAILED'
+        persistUpdate(current.id, { status: 'FAILED', error_msg: error?.message ?? String(error) }, 'processNext')
+        this._broadcast?.({ type: 'message:failed', id: current.id, error: error?.message ?? String(error) })
+      }
+    } finally {
+      this._current = null
+      void this._processNext()
+    }
   }
 
   async _processMessage(msg) {
@@ -150,13 +168,13 @@ export class MessageQueue {
     } else {
       // Otherwise, synthesize the text
       while (attempt < MAX_RETRIES && audioPath === null) {
-        updateMessage(msg.id, { status: 'SYNTHESIZING', retries: attempt })
+        persistUpdate(msg.id, { status: 'SYNTHESIZING', retries: attempt }, 'synthesize')
         try {
           audioPath = await synthesize(msg.id, msg.text)
         } catch (err) {
           attempt += 1
           if (attempt >= MAX_RETRIES) {
-            updateMessage(msg.id, { status: 'FAILED', error_msg: err.message })
+            persistUpdate(msg.id, { status: 'FAILED', error_msg: err.message }, 'synthesize-failed')
             this._broadcast?.({ type: 'message:failed', id: msg.id, error: err.message })
             return
           }
@@ -165,7 +183,7 @@ export class MessageQueue {
       }
     }
 
-    updateMessage(msg.id, { status: 'READY', audio_path: audioPath })
+    persistUpdate(msg.id, { status: 'READY', audio_path: audioPath }, 'ready')
     msg.status = 'READY'
     
     // DEBUG: Log what we're broadcasting
@@ -182,7 +200,7 @@ export class MessageQueue {
     
     this._broadcast?.(broadcastPayload)
     
-    updateMessage(msg.id, { status: 'PLAYING' })
+    persistUpdate(msg.id, { status: 'PLAYING' }, 'playing')
     msg.status = 'PLAYING'
 
     this._armPlaybackTimeout(msg)
@@ -195,7 +213,7 @@ export class MessageQueue {
     this._resolveAudio = null
 
     if (msg.status !== 'SKIPPED') {
-      updateMessage(msg.id, { status: 'DONE' })
+      persistUpdate(msg.id, { status: 'DONE' }, 'done')
       this._broadcast?.({ type: 'message:done', id: msg.id })
     }
   }

@@ -4,7 +4,26 @@
 
 import { parseBotCommand } from './parser.js'
 import { canUseCommand } from './permissions.js'
-import { commandHandlers } from './commands/index.js'
+import { commandHandlers, voiceHandlers } from './commands/index.js'
+
+function resolveCommand(command) {
+  const value = String(command ?? '').trim().toLowerCase()
+  if (!value) return { handler: '', permission: '' }
+
+  if (value.startsWith('ttsvoice') && value.length > 8) {
+    return { handler: value.slice(8), permission: 'voice' }
+  }
+
+  if (value.startsWith('voice') && value.length > 5) {
+    return { handler: value.slice(5), permission: 'voice' }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(voiceHandlers, value)) {
+    return { handler: value, permission: 'voice' }
+  }
+
+  return { handler: value, permission: value }
+}
 
 function createReply(sendChatMessage) {
   return async function reply(text) {
@@ -37,18 +56,20 @@ export function createRouter(deps) {
       return { handled: false, ignored: true }
     }
 
+    const resolved = resolveCommand(parsed.command)
+
     const allowed = canUseCommand({
       role: event.role,
       username: event.username,
-      command: parsed.command,
-      config
-    })
+       command: resolved.permission,
+       config
+     })
 
     if (!allowed) {
       return { handled: true, denied: true, action: parsed.command }
     }
 
-    const handler = commandHandlers[parsed.command]
+    const handler = commandHandlers[resolved.handler]
     if (!handler) {
       return { handled: true, error: 'unknown command', action: parsed.command }
     }

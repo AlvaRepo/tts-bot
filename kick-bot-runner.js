@@ -147,10 +147,12 @@ export function createKickBotRunner({
   onCustomerTokensRefreshed = null, // Callback para guardar tokens actualizados
   logger = console
 }) {
-  let ws = null
-  let started = false
-  let channel = null
-  let chatroomId = null
+   let ws = null
+   let started = false
+   let channel = null
+   let chatroomId = null
+   let _shuttingDown = false
+   let _attempt = 0
 
   // Load OAuth credentials from env
   const OAUTH_CLIENT_ID = process.env.KICK_OAUTH_CLIENT_ID
@@ -268,9 +270,11 @@ export function createKickBotRunner({
     try {
       ws = new WebSocket(WEBSOCKET_URL)
 
-      ws.onopen = () => {
-        ws.send(buildSubscribeMessage(chatroomId))
-      }
+       ws.onopen = () => {
+         // Reset attempt counter on successful connection
+         _attempt = 0;
+         ws.send(buildSubscribeMessage(chatroomId))
+       }
 
       ws.onmessage = async (event) => {
         const parsed = parsePusherMessage(event.data)
@@ -308,10 +312,30 @@ export function createKickBotRunner({
         updateBotRuntime({ connected: false, lastError: String(error) })
       }
 
-      ws.onclose = () => {
-        updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
-        started = false
-      }
+       ws.onclose = () => {
+         updateBotRuntime({ connected: false, lastSeenAt: Date.now() })
+         started = false
+         
+         // Handle reconnection with backoff unless shutting down
+         if (_shuttingDown) {
+           logger.info('[kick-bot] Shutting down, suppressing reconnection');
+           return;
+         }
+         
+         _attempt++;
+         if (_attempt >= 15) {
+           logger.error('[kick-bot] Max reconnection attempts reached (15), giving up');
+           return;
+         }
+         
+         // Calculate delay with exponential backoff and jitter
+         const delay = Math.min(60000, 1000 * 2 ** _attempt) * (0.5 + Math.random() * 0.5);
+         logger.info(`[kick-bot] Reconnecting in ${Math.round(delay)}ms (attempt ${_attempt}/15)`);
+         
+         setTimeout(() => {
+           start(); // This will create a new WebSocket connection
+         }, delay);
+       }
 
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('connection timeout')), 10000)
@@ -335,15 +359,16 @@ export function createKickBotRunner({
     }
   }
 
-  async function stop() {
-    try {
-      ws?.close()
-    } catch {}
-    started = false
-    ws = null
-    updateBotRuntime({ connected: false })
-    return { stopped: true }
-  }
+   async function stop() {
+     _shuttingDown = true;
+     try {
+       ws?.close()
+     } catch {}
+     started = false
+     ws = null
+     updateBotRuntime({ connected: false })
+     return { stopped: true }
+   }
 
   async function sendChatMessage(text) {
     console.log('[sendChat] === START ===')
@@ -684,19 +709,20 @@ export function createKickBotRunner({
     }
   }
 
-  return {
-    start,
-    stop,
-    isStarted: () => started,
-    getClient: () => ws,
-    sendChatMessage,
-    sendChatMessageAsUser,
-    getOAuthUrl,
-    exchangeCode,
-    // Customer OAuth
-    getCustomerOAuthUrl,
-    exchangeCustomerCode,
-    setCustomerTokens,
-    getCustomerTokens
-  }
+   return {
+     start,
+     stop,
+     isStarted: () => started,
+     getClient: () => ws,
+     sendChatMessage,
+     sendChatMessageAsUser,
+     getOAuthUrl,
+     exchangeCode,
+     // Customer OAuth
+     getCustomerOAuthUrl,
+     exchangeCustomerCode,
+     setCustomerTokens,
+     getCustomerTokens,
+     setShuttingDown: (value) => { _shuttingDown = value; }
+   }
 }

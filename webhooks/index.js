@@ -24,7 +24,7 @@ function buildWebhookHandler({ provider, verifyAuth, normalize, enqueueMessage }
     const dedupeKey = deriveDedupeKey(provider, event.provider_event_id, event.provider_delivery_id)
     if (!dedupeKey) return jsonError(res, 400, 'missing stable provider event id')
 
-    const claim = claimWebhookDelivery({
+    const claim = await claimWebhookDelivery({
       provider,
       dedupe_key: dedupeKey,
       source: event.source,
@@ -50,10 +50,10 @@ function buildWebhookHandler({ provider, verifyAuth, normalize, enqueueMessage }
         text: event.text
       })
 
-      markWebhookDeliveryProcessed(provider, dedupeKey, message.id)
+      await markWebhookDeliveryProcessed(provider, dedupeKey, message.id)
       return res.status(200).json({ ok: true, duplicate: false, id: message.id, provider })
     } catch (error) {
-      releaseWebhookDelivery(provider, dedupeKey)
+      await releaseWebhookDelivery(provider, dedupeKey)
       return jsonError(res, error.statusCode ?? 500, error.message)
     }
   }

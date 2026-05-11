@@ -46,6 +46,16 @@ export function buildMessageRecord(body) {
 }
 
 export function createMessageService({ insertMessage, queue, maxMessageLength = 300, filterMessage = null }) {
+  function persistRecord(record, { queueAfterInsert = true, label = 'insertMessage' } = {}) {
+    Promise.resolve(insertMessage(record))
+      .then(() => {
+        if (queueAfterInsert) queue.add(record)
+      })
+      .catch(error => {
+        console.error(`[message-service] ${label} failed for ${record.id}:`, error?.message ?? error)
+      })
+  }
+
   function enqueueMessage(body) {
     const error = validateMessagePayload(body, maxMessageLength)
     if (error) {
@@ -59,12 +69,11 @@ export function createMessageService({ insertMessage, queue, maxMessageLength = 
     if (filterResult?.blocked) {
       record.status = 'SKIPPED'
       record.error_msg = filterResult.reason ?? 'FILTERED'
-      insertMessage(record)
+      persistRecord(record, { queueAfterInsert: false, label: 'filtered-message' })
       return record
     }
 
-    insertMessage(record)
-    queue.add(record)
+    persistRecord(record)
     return record
   }
 
