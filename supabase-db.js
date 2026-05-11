@@ -1,6 +1,27 @@
 import { supabase, supabaseAdmin } from './supabase-client.js'
 import { existsSync, unlinkSync } from 'fs'
 
+const SUPABASE_SILENT = process.env.SUPABASE_SILENT === '1' || process.env.NODE_ENV === 'test' || !process.env.SUPABASE_URL
+
+const memoryStore = {
+  settings: new Map(),
+  messages: new Map(),
+  webhookDedupe: new Map()
+}
+
+function cloneRow(row) {
+  return row ? structuredClone(row) : row
+}
+
+function memoryNowIso() {
+  return new Date().toISOString()
+}
+
+function logSupabaseError(...args) {
+  if (SUPABASE_SILENT) return
+  console.error(...args)
+}
+
 // Configuración por defecto
 const DEFAULT_TTS_VOICE = 'es-AR-TomasNeural'
 export const AVAILABLE_TTS_VOICES = [
@@ -78,6 +99,8 @@ function isValidUuid(id) {
 
 // Funciones auxiliares para settings
 async function getSetting(key) {
+  if (SUPABASE_SILENT) return memoryStore.settings.has(key) ? memoryStore.settings.get(key) : null
+
   const { data, error } = await supabase
     .from('settings')
     .select('value')
@@ -92,6 +115,11 @@ async function getSetting(key) {
 }
 
 async function setSetting(key, value) {
+  if (SUPABASE_SILENT) {
+    memoryStore.settings.set(key, value)
+    return
+  }
+
   const { error } = await supabaseAdmin
     .from('settings')
     .upsert({ 
@@ -124,6 +152,24 @@ async function getSettingBoolean(key, fallback = false) {
 
 // Funciones principales de mensajes
 export async function insertMessage(msg) {
+  if (SUPABASE_SILENT) {
+    const row = {
+      id: msg.id,
+      source: msg.source,
+      donor_name: msg.donor_name || null,
+      amount: msg.amount || null,
+      text: msg.text,
+      status: msg.status || 'PENDING',
+      retries: msg.retries || 0,
+      audio_path: msg.audio_path || null,
+      created_at: new Date(msg.created_at || Date.now()).toISOString(),
+      updated_at: memoryNowIso(),
+      error_msg: msg.error_msg || null
+    }
+    memoryStore.messages.set(row.id, row)
+    return cloneRow(row)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('messages')
     .insert({
@@ -142,7 +188,7 @@ export async function insertMessage(msg) {
     .select()
   
   if (error) {
-    console.error('Error al insertar mensaje:', error)
+    logSupabaseError('Error al insertar mensaje:', error)
     throw error
   }
   
@@ -152,8 +198,12 @@ export async function insertMessage(msg) {
 
 export async function getMessage(id) {
   if (!isValidUuid(id)) {
-    console.error('Error al obtener mensaje: ID inválido:', id)
+    logSupabaseError('Error al obtener mensaje: ID inválido:', id)
     return null
+  }
+
+  if (SUPABASE_SILENT) {
+    return cloneRow(memoryStore.messages.get(id) || null)
   }
   
   const { data, error } = await supabase
@@ -162,7 +212,7 @@ export async function getMessage(id) {
     .eq('id', id)
   
   if (error) {
-    console.error('Error al obtener mensaje:', error)
+    logSupabaseError('Error al obtener mensaje:', error)
     return null
   }
   
@@ -172,8 +222,20 @@ export async function getMessage(id) {
 
 export async function updateMessage(id, fields) {
   if (!isValidUuid(id)) {
-    console.error('Error al actualizar mensaje: ID inválido:', id)
+    logSupabaseError('Error al actualizar mensaje: ID inválido:', id)
     return null
+  }
+
+  if (SUPABASE_SILENT) {
+    const current = memoryStore.messages.get(id)
+    if (!current) return null
+    const updated = {
+      ...current,
+      ...fields,
+      updated_at: memoryNowIso()
+    }
+    memoryStore.messages.set(id, updated)
+    return cloneRow(updated)
   }
   
   const updateData = {
@@ -188,7 +250,7 @@ export async function updateMessage(id, fields) {
     .select()
   
   if (error) {
-    console.error('Error al actualizar mensaje:', error)
+    logSupabaseError('Error al actualizar mensaje:', error)
     // Si no encuentra el mensaje, intentar obtenerlo
     return getMessage(id)
   }
@@ -198,6 +260,23 @@ export async function updateMessage(id, fields) {
 }
 
 export async function getHistory(limit = 50, filters = {}) {
+  if (SUPABASE_SILENT) {
+    const rows = [...memoryStore.messages.values()]
+      .filter(row => {
+        if (filters.status && filters.status !== 'all' && row.status !== filters.status) return false
+        if (filters.source && filters.source !== 'all' && row.source !== filters.source) return false
+        if (filters.query) {
+          const q = String(filters.query).toLowerCase()
+          const haystack = [row.text, row.donor_name, row.id].filter(Boolean).join(' ').toLowerCase()
+          if (!haystack.includes(q)) return false
+        }
+        return true
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit)
+    return rows.map(cloneRow)
+  }
+
   let query = supabase
     .from('messages')
     .select('*')
@@ -219,7 +298,7 @@ export async function getHistory(limit = 50, filters = {}) {
     .limit(limit)
   
   if (error) {
-    console.error('Error al obtener historial:', error)
+    logSupabaseError('Error al obtener historial:', error)
     return []
   }
   
@@ -227,6 +306,13 @@ export async function getHistory(limit = 50, filters = {}) {
 }
 
 export async function deleteMessage(id) {
+  if (SUPABASE_SILENT) {
+    const message = memoryStore.messages.get(id)
+    if (!message) return null
+    memoryStore.messages.delete(id)
+    return cloneRow(message)
+  }
+
   const message = await getMessage(id)
   if (!message) return null
   
@@ -241,7 +327,7 @@ export async function deleteMessage(id) {
     .eq('id', id)
   
   if (error) {
-    console.error('Error al eliminar mensaje:', error)
+    logSupabaseError('Error al eliminar mensaje:', error)
   }
   
   return message
@@ -535,6 +621,10 @@ export async function claimWebhookDelivery({ provider, dedupe_key, source = 'web
 }
 
 export async function getWebhookDelivery(provider, dedupeKey) {
+  if (SUPABASE_SILENT) {
+    return cloneRow(memoryStore.webhookDedupe.get(`${provider}:${dedupeKey}`) || null)
+  }
+
   const { data, error } = await supabase
     .from('webhook_dedupe')
     .select('*')
@@ -543,13 +633,27 @@ export async function getWebhookDelivery(provider, dedupeKey) {
     .single()
     
   if (error && error.code !== 'PGRST116') {
-    console.error('Error al obtener webhook delivery:', error)
+    logSupabaseError('Error al obtener webhook delivery:', error)
   }
   
   return data || null
 }
 
 export async function markWebhookDeliveryProcessed(provider, dedupeKey, messageId) {
+  if (SUPABASE_SILENT) {
+    const key = `${provider}:${dedupeKey}`
+    const current = memoryStore.webhookDedupe.get(key) || { provider, dedupe_key: dedupeKey }
+    const row = {
+      ...current,
+      status: 'PROCESSED',
+      message_id: messageId,
+      error_msg: null,
+      updated_at: memoryNowIso()
+    }
+    memoryStore.webhookDedupe.set(key, row)
+    return cloneRow(row)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('webhook_dedupe')
     .update({
@@ -564,13 +668,26 @@ export async function markWebhookDeliveryProcessed(provider, dedupeKey, messageI
     .single()
     
   if (error) {
-    console.error('Error al marcar webhook como procesado:', error)
+    logSupabaseError('Error al marcar webhook como procesado:', error)
   }
   
   return data || getWebhookDelivery(provider, dedupeKey)
 }
 
 export async function markWebhookDeliveryFailed(provider, dedupeKey, errorMsg) {
+  if (SUPABASE_SILENT) {
+    const key = `${provider}:${dedupeKey}`
+    const current = memoryStore.webhookDedupe.get(key) || { provider, dedupe_key: dedupeKey }
+    const row = {
+      ...current,
+      status: 'FAILED',
+      error_msg: errorMsg,
+      updated_at: memoryNowIso()
+    }
+    memoryStore.webhookDedupe.set(key, row)
+    return cloneRow(row)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('webhook_dedupe')
     .update({
@@ -584,13 +701,18 @@ export async function markWebhookDeliveryFailed(provider, dedupeKey, errorMsg) {
     .single()
     
   if (error) {
-    console.error('Error al marcar webhook como fallido:', error)
+    logSupabaseError('Error al marcar webhook como fallido:', error)
   }
   
   return data || getWebhookDelivery(provider, dedupeKey)
 }
 
 export async function releaseWebhookDelivery(provider, dedupeKey) {
+  if (SUPABASE_SILENT) {
+    memoryStore.webhookDedupe.delete(`${provider}:${dedupeKey}`)
+    return
+  }
+
   const { error } = await supabaseAdmin
     .from('webhook_dedupe')
     .delete()
@@ -598,7 +720,7 @@ export async function releaseWebhookDelivery(provider, dedupeKey) {
     .eq('dedupe_key', dedupeKey)
     
   if (error) {
-    console.error('Error al liberar webhook:', error)
+    logSupabaseError('Error al liberar webhook:', error)
   }
 }
 
@@ -625,12 +747,26 @@ function safeJsonParse(value, fallback) {
 
 // Función de inicialización (compatible con db.js)
 export function initDB() {
-  console.log('✅ Conectado a Supabase (modo initDB)')
+  if (!SUPABASE_SILENT) console.log('✅ Conectado a Supabase (modo initDB)')
   return supabase
 }
 
 // Función para limpieza de datos antiguos (opcional, puede usarse con cron)
 export async function runCleanup() {
+  if (SUPABASE_SILENT) {
+    for (const [id, row] of memoryStore.messages.entries()) {
+      if (['DONE', 'FAILED', 'SKIPPED'].includes(row.status)) {
+        memoryStore.messages.delete(id)
+      }
+    }
+    for (const [key, row] of memoryStore.webhookDedupe.entries()) {
+      if (['PROCESSED', 'FAILED'].includes(row.status)) {
+        memoryStore.webhookDedupe.delete(key)
+      }
+    }
+    return
+  }
+
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     
   // Limpiar mensajes antiguos completados
@@ -641,7 +777,7 @@ export async function runCleanup() {
     .lt('created_at', sevenDaysAgo)
     
   if (msgError) {
-    console.error('Error al limpiar mensajes:', msgError)
+    logSupabaseError('Error al limpiar mensajes:', msgError)
   }
     
   // Limpiar webhooks antiguos
@@ -652,8 +788,8 @@ export async function runCleanup() {
     .lt('created_at', sevenDaysAgo)
     
   if (webError) {
-    console.error('Error al limpiar webhooks:', webError)
+    logSupabaseError('Error al limpiar webhooks:', webError)
   }
     
-  console.log('🧹 Limpieza de datos antiguos completada')
+  if (!SUPABASE_SILENT) console.log('🧹 Limpieza de datos antiguos completada')
 }

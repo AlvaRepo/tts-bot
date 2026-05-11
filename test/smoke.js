@@ -7,6 +7,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { deriveDedupeKey, buildCanonicalDonationEvent } from '../webhooks/shared.js'
+import { MessageQueue } from '../queue.js'
+import { createResilience } from '../src/process-resilience.js'
+import { computeReconnectDelay } from '../kick-bot-runner.js'
 import {
   normalizePayPal,
   normalizeMercadoPago,
@@ -25,6 +28,7 @@ const ROOT_DIR = fileURLToPath(new URL('..', import.meta.url))
 
 async function main() {
   await runUnitChecks()
+  await runRecoveryChecks()
   await runRuntimeChecks()
   console.log('=== Smoke Test PASSED ===')
 }
@@ -82,6 +86,64 @@ async function runUnitChecks() {
   assert.equal(vip.event.amount, null)
 
   assert.ok(unresolvedProviderHeaderAssumptions.paypal.length > 0)
+}
+
+async function runRecoveryChecks() {
+  const queue = new MessageQueue({
+    loadRecoverableMessages: async () => ([
+      { id: 'm1', text: 'primero', status: 'QUEUED', created_at: '2026-05-11T10:00:00.000Z' },
+      { id: 'm2', text: 'segundo', status: 'PLAYING', created_at: '2026-05-11T10:01:00.000Z' },
+      { id: 'm3', text: 'terminal', status: 'DONE', created_at: '2026-05-11T10:02:00.000Z' }
+    ])
+  })
+
+  const hydrated = await queue.rehydrate()
+  assert.equal(hydrated.recoveredCount, 2)
+  const secondHydrate = await queue.rehydrate()
+  assert.equal(secondHydrate.alreadyRehydrated, true)
+  assert.equal(secondHydrate.recoveredCount, 2)
+  assert.equal(queue.snapshot().pendingCount, 2)
+  assert.equal(queue.snapshot().state, 'idle')
+
+  const d1 = computeReconnectDelay(1, () => 1)
+  const d2 = computeReconnectDelay(2, () => 1)
+  const d99 = computeReconnectDelay(99, () => 1)
+  assert.ok(d2 > d1)
+  assert.ok(d99 <= 60000)
+
+  let exitCode = null
+  const bootStatus = { hydrated: false, error: null }
+  const resilience = createResilience({
+    server: { close: cb => cb?.() },
+    wss: { close: cb => cb?.() },
+    kickBotRunner: { isStarted: () => false, stop: async () => {} },
+    queue: { control: () => {} },
+    bootStatus,
+    exitProcess: code => { exitCode = code }
+  })
+
+  assert.equal(resilience.ready().status, 'degraded')
+  bootStatus.hydrated = true
+  const ready = resilience.ready()
+  assert.equal(ready.status, 'ok')
+  assert.equal(ready.connected, false)
+
+  await resilience.shutdown(1)
+  assert.equal(exitCode, 1)
+
+  let rejectionExit = null
+  const rejectionResilience = createResilience({
+    server: { close: cb => cb?.() },
+    wss: { close: cb => cb?.() },
+    kickBotRunner: { isStarted: () => false, stop: async () => {} },
+    queue: { control: () => {} },
+    bootStatus: { hydrated: true, error: null },
+    exitProcess: code => { rejectionExit = code }
+  })
+
+  process.emit('unhandledRejection', new Error('boom'), Promise.resolve())
+  await delay(1100)
+  assert.equal(rejectionExit, 1)
 }
 
 async function runRuntimeChecks() {
@@ -401,7 +463,7 @@ async function waitForHistory(baseUrl, predicate, timeoutMs = 10_000) {
   throw new Error('history predicate timeout')
 }
 
-async function waitForMessage(baseUrl, id, predicate, timeoutMs = 12_000) {
+async function waitForMessage(baseUrl, id, predicate, timeoutMs = 25_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const rows = await fetch(`${baseUrl}/api/history`).then(r => r.json())

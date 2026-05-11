@@ -6,6 +6,7 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
 
 const CACHE_DIR = process.env.AUDIO_CACHE_DIR ?? './audio_cache'
 const VOICE = process.env.TTS_VOICE ?? 'es-AR-TomasNeural'
+const TTS_MOCK = ['1', 'true', 'yes', 'on'].includes(String(process.env.TTS_MOCK ?? '').trim().toLowerCase())
 
 if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true })
 
@@ -48,6 +49,11 @@ function getVoiceLocale(voiceName) {
  */
 export async function synthesize(id, text) {
   const outPath = join(CACHE_DIR, `${id}.mp3`)
+
+  if (TTS_MOCK) {
+    await writeFile(outPath, `mock-audio:${id}:${text}`)
+    return outPath
+  }
   
   const voice = await getTtsVoicePreference?.() ?? VOICE
   const presetKey = await getTtsPresetPreference?.() ?? 'neutral'
