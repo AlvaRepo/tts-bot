@@ -561,12 +561,10 @@ app.post('/api/bot/heartbeat', (req, res) => {
 app.post('/api/bot/event', async (req, res) => {
   try {
     const result = await kickBotRouter.handleEvent(req.body ?? {})
-    botRuntime.lastSeenAt = Date.now()
-    botRuntime.connected = true
-    botRuntime.lastError = null
+    updateBotRuntime({ lastSeenAt: Date.now(), connected: true, lastError: null })
     res.json(result)
   } catch (error) {
-    botRuntime.lastError = error.message
+    updateBotRuntime({ lastError: error.message })
     res.status(500).json({ error: error.message })
   }
 })
