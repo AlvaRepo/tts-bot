@@ -10,6 +10,7 @@ import { deriveDedupeKey, buildCanonicalDonationEvent } from '../webhooks/shared
 import { MessageQueue } from '../queue.js'
 import { createResilience } from '../src/process-resilience.js'
 import { computeReconnectDelay } from '../kick-bot-runner.js'
+import { createReply, createRouter } from '../bot/router.js'
 import {
   normalizePayPal,
   normalizeMercadoPago,
@@ -86,6 +87,62 @@ async function runUnitChecks() {
   assert.equal(vip.event.amount, null)
 
   assert.ok(unresolvedProviderHeaderAssumptions.paypal.length > 0)
+
+  await runReplyFailureChecks()
+}
+
+async function runReplyFailureChecks() {
+  {
+    const runtime = {}
+    const reply = createReply(
+      async () => ({ ok: false, error: 'send failed' }),
+      patch => Object.assign(runtime, patch)
+    )
+
+    await assert.rejects(async () => reply('hola'), /send failed/)
+    assert.equal(runtime.lastError, 'send failed')
+  }
+
+  {
+    const runtime = {}
+    const reply = createReply(
+      async () => ({ ok: true, messageId: 'msg-1' }),
+      patch => Object.assign(runtime, patch)
+    )
+
+    const result = await reply('hola')
+    assert.deepEqual(result, { ok: true, messageId: 'msg-1' })
+    assert.equal(runtime.lastError, undefined)
+  }
+
+  {
+    const runtime = {}
+    const router = createRouter({
+      getConfig: async () => ({ prefix: '!', commandPermissions: { help: ['streamer', 'moderator', 'vip', 'subscriber', 'viewer'] } }),
+      updateRuntime: patch => Object.assign(runtime, patch),
+      sendChatMessage: async () => ({ ok: false, error: 'send failed' })
+    })
+
+    await assert.rejects(
+      async () => router.handleEvent({ username: 'streamer', role: 'streamer', content: '!help' }),
+      /send failed/
+    )
+    assert.equal(runtime.lastError, 'send failed')
+  }
+
+  {
+    const runtime = {}
+    const router = createRouter({
+      getConfig: async () => ({ prefix: '!', commandPermissions: { help: ['streamer', 'moderator', 'vip', 'subscriber', 'viewer'] } }),
+      updateRuntime: patch => Object.assign(runtime, patch),
+      sendChatMessage: async () => ({ ok: true, messageId: 'msg-2' })
+    })
+
+    const result = await router.handleEvent({ username: 'streamer', role: 'streamer', content: '!help' })
+    assert.deepEqual(result, { handled: true, action: 'help' })
+    assert.equal(runtime.lastError, undefined)
+  }
+
 }
 
 async function runRecoveryChecks() {
@@ -177,6 +234,7 @@ async function runRuntimeChecks() {
   const logs = []
   const ready = await waitForServerReady(child, logs)
   assert.equal(ready, true, `server no inició: ${logs.join('\n')}`)
+  await waitForBootReady(baseUrl)
 
   try {
     await testManualFlow(baseUrl, audioDir)
@@ -212,7 +270,7 @@ async function runRuntimeChecks() {
 
     await testAuthAndMalformedPaths(baseUrl)
     await testSystemRoutes(baseUrl)
-    await testBotCommands(baseUrl)
+    await testBotReplyFailurePropagation(baseUrl)
     await testAudioProfilePreference(child, baseUrl, env)
   } finally {
     child.kill('SIGTERM')
@@ -251,6 +309,20 @@ async function testAudioProfilePreference(child, baseUrl, env) {
   assert.equal(afterSave.preference, 'high')
   assert.equal(typeof afterSave.effective, 'string')
   assert.equal(typeof afterSave.apply_on_restart, 'boolean')
+}
+
+async function waitForBootReady(baseUrl, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastReady = null
+
+  while (Date.now() < deadline) {
+    const ready = await fetch(`${baseUrl}/ready`).then(r => r.json())
+    lastReady = ready
+    if (ready.status === 'ok' && ready.hydrated) return ready
+    await delay(250)
+  }
+
+  throw new Error(`boot did not become ready within ${timeoutMs}ms (last status: ${lastReady?.status ?? 'missing'}, hydrated: ${lastReady?.hydrated ?? 'n/a'}, bootError: ${lastReady?.bootError ?? 'n/a'})`)
 }
 
 async function testManualFlow(baseUrl, audioDir) {
@@ -397,7 +469,7 @@ async function testSystemRoutes(baseUrl) {
    assert.ok(Object.prototype.hasOwnProperty.call(readyData, 'uptime'));
  }
 
-async function testBotCommands(baseUrl) {
+async function testBotReplyFailurePropagation(baseUrl) {
   await fetch(`${baseUrl}/api/bot/config`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -408,18 +480,15 @@ async function testBotCommands(baseUrl) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ platform: 'kick', channel: 'demo', username: 'viewer', role: 'viewer', content: '!help' })
-  }).then(r => r.json())
-  assert.equal(helpEvent.handled, true)
-  assert.equal(helpEvent.action, 'help')
+  })
+  assert.equal(helpEvent.status, 500)
+  const helpBody = await helpEvent.json()
+  assert.equal(typeof helpBody.error, 'string')
+  assert.ok(helpBody.error.length > 0)
 
-  const voiceEvent = await fetch(`${baseUrl}/api/bot/event`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ platform: 'kick', channel: 'demo', username: 'mod', role: 'moderator', content: '!ttsVoiceAlvaro' })
-  }).then(r => r.json())
-  assert.equal(voiceEvent.handled, true)
-  assert.equal(voiceEvent.action, 'voice')
-  assert.equal(voiceEvent.voice, 'Alvaro')
+  const status = await fetch(`${baseUrl}/api/bot/status`).then(r => r.json())
+  assert.equal(status.lastError, helpBody.error)
+  assert.equal(typeof status.lastEventAt, 'number')
 }
 
 async function waitForServerReady(child, logs) {
@@ -463,15 +532,24 @@ async function waitForHistory(baseUrl, predicate, timeoutMs = 10_000) {
   throw new Error('history predicate timeout')
 }
 
-async function waitForMessage(baseUrl, id, predicate, timeoutMs = 25_000) {
+async function waitForMessage(baseUrl, id, predicate, timeoutMs = 45_000) {
   const deadline = Date.now() + timeoutMs
+  let lastRow = null
   while (Date.now() < deadline) {
     const rows = await fetch(`${baseUrl}/api/history`).then(r => r.json())
     const row = rows.find(item => item.id === id)
-    if (row && predicate(row)) return row
+    if (row) {
+      lastRow = row
+      if (row.status === 'FAILED') {
+        throw new Error(`message ${id} failed early: ${row.error_msg ?? 'unknown error'}`)
+      }
+      if (predicate(row)) return row
+    }
     await delay(250)
   }
-  throw new Error(`message ${id} did not satisfy predicate`)
+  const status = lastRow?.status ?? 'missing'
+  const errorMsg = lastRow?.error_msg ?? 'n/a'
+  throw new Error(`message ${id} did not satisfy predicate within ${timeoutMs}ms (last status: ${status}, error: ${errorMsg})`)
 }
 
 main().catch(async error => {

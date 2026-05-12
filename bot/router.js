@@ -25,16 +25,23 @@ function resolveCommand(command) {
   return { handler: value, permission: value }
 }
 
-function createReply(sendChatMessage) {
+export function createReply(sendChatMessage, updateRuntime) {
   return async function reply(text) {
-    console.log('[reply] called, text:', text, 'sendChatMessage type:', typeof sendChatMessage)
     if (typeof sendChatMessage === 'function' && text) {
-      console.log('[reply] calling sendChatMessage')
-      const result = await sendChatMessage(text)
-      console.log('[reply] sendChatMessage result:', JSON.stringify(result))
-      return result
+      try {
+        const result = await sendChatMessage(text)
+        if (result?.ok === false) {
+          const message = result.error || 'send failed'
+          updateRuntime?.({ lastError: message })
+          throw new Error(message)
+        }
+        return result
+      } catch (error) {
+        const message = error?.message ?? String(error)
+        updateRuntime?.({ lastError: message })
+        throw error instanceof Error ? error : new Error(message)
+      }
     }
-    console.log('[reply] skipped')
   }
 }
 
@@ -74,8 +81,7 @@ export function createRouter(deps) {
       return { handled: true, error: 'unknown command', action: parsed.command }
     }
 
-    const reply = createReply(sendChatMessage)
-    console.log('[router] reply fn exists:', typeof reply === 'function', 'sendChatMessage:', typeof sendChatMessage)
+    const reply = createReply(sendChatMessage, updateRuntime)
     return handler({
       event,
       parsed,
