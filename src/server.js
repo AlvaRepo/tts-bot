@@ -226,6 +226,11 @@ app.post('/api/control/:action', (req, res) => {
   res.json({ ok: true })
 })
 
+app.post('/api/overlay/refresh', (_req, res) => {
+  broadcast({ type: 'overlay:refresh' })
+  res.json({ ok: true })
+})
+
 app.post('/api/message/:id/cancel', async (req, res) => {
   const message = await getMessage(req.params.id)
   if (!message) return res.status(404).json({ error: 'not found' })

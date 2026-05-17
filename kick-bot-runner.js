@@ -400,12 +400,6 @@ export function createKickBotRunner({
       return { ok: false, error: 'no access token' }
     }
     
-    // If using broadcasterId with bot token, that's not going to work - fail early
-    if (broadcasterId && !hasCustomerToken) {
-      console.log('[sendChat] ERROR: Cannot send as type:user without customer token. Need to complete customer OAuth.')
-      return { ok: false, error: 'Missing customer token. Please complete customer OAuth flow.' }
-    }
-
     try {
       // Only use type: 'user' if we have the customer token, otherwise use type: 'bot'
       const requestOpts = (broadcasterId && hasCustomerToken)

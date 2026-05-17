@@ -157,6 +157,20 @@ export const Estado = {
     await this.refreshHistory();
   },
 
+  async refreshOverlay() {
+    const status = document.getElementById('overlayRefreshStatus');
+    try {
+      const data = await this.postJSON('/api/overlay/refresh', {});
+      if (!data?.ok) throw new Error(data?.error || 'overlay refresh failed');
+      if (status) status.textContent = 'Refresco del overlay enviado';
+    } catch (error) {
+      if (status) status.textContent = 'Error al refrescar overlay';
+      console.error('[overlay-refresh]', error);
+    } finally {
+      if (status) setTimeout(() => { if (status.textContent) status.textContent = ''; }, 1500);
+    }
+  },
+
   // Initialize state module
   init() {
     const text = document.getElementById('text');
@@ -172,6 +186,7 @@ export const Estado = {
     const sourceFilter = document.getElementById('sourceFilter');
     const applyFilters = document.getElementById('applyFilters');
     const refreshNow = document.getElementById('refreshNow');
+    const overlayRefresh = document.getElementById('overlayRefresh');
     const historyEl = document.getElementById('history');
 
     let autoRefreshTimer = null;
@@ -216,6 +231,11 @@ export const Estado = {
         await this.refreshQueue();
         await this.refreshHistory();
         await this.refreshVolume();
+      });
+    }
+    if (overlayRefresh) {
+      overlayRefresh.addEventListener('click', async () => {
+        await this.refreshOverlay();
       });
     }
 

@@ -67,12 +67,13 @@
     const player = document.getElementById('player')
     const pokemonImg = document.getElementById('pokemon-img')
     let socket = null
-    let reconnectTimer = null
-    let currentId = null
-    let endFallbackTimer = null
-    let pendingPlayRetry = null
-    let audioVolume = 1.0
-    let pokemonAudioVolume = 0.3
+      let reconnectTimer = null
+      let currentId = null
+      let endFallbackTimer = null
+      let pendingPlayRetry = null
+      let refreshRequested = false
+      let audioVolume = 1.0
+      let pokemonAudioVolume = 0.3
 
     // Fetch volumes on load
     fetch('/api/audio-volume')
@@ -155,6 +156,14 @@
       })
     }
 
+    function refreshOverlay() {
+      refreshRequested = true
+      clearEndFallback()
+      clearTimeout(pendingPlayRetry)
+      pendingPlayRetry = null
+      location.reload()
+    }
+
     function connect() {
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const wsPort = location.port ? `:${location.port}` : ''
@@ -170,6 +179,11 @@
       socket.addEventListener('message', event => {
         const data = JSON.parse(event.data)
         console.log('[overlay] received:', data.type, 'metadata:', data.metadata)
+
+        if (data.type === 'overlay:refresh') {
+          refreshOverlay()
+          return
+        }
         
         if (data.type === 'message:start') {
           currentId = data.id
@@ -218,6 +232,7 @@
       })
 
       socket.addEventListener('close', () => {
+        if (refreshRequested) return
         if (reconnectTimer) clearTimeout(reconnectTimer)
         reconnectTimer = setTimeout(() => location.reload(), 3000)
       })
