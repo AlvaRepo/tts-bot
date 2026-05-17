@@ -22,6 +22,10 @@ function resolveCommand(command) {
     return { handler: value, permission: 'voice' }
   }
 
+  if (value === 'decir') {
+    return { handler: 'decir', permission: 'tts' }
+  }
+
   return { handler: value, permission: value }
 }
 

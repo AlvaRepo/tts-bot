@@ -9,8 +9,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { deriveDedupeKey, buildCanonicalDonationEvent } from '../webhooks/shared.js'
 import { MessageQueue } from '../queue.js'
 import { createResilience } from '../src/process-resilience.js'
-import { computeReconnectDelay } from '../kick-bot-runner.js'
+import { computeReconnectDelay, createKickBotRunner } from '../kick-bot-runner.js'
 import { createReply, createRouter } from '../bot/router.js'
+import { helpHandler } from '../bot/commands/help.js'
 import {
   normalizePayPal,
   normalizeMercadoPago,
@@ -89,6 +90,8 @@ async function runUnitChecks() {
   assert.ok(unresolvedProviderHeaderAssumptions.paypal.length > 0)
 
   await runReplyFailureChecks()
+  await runDecirCommandChecks()
+  await runKickChatSendModeChecks()
 }
 
 async function runReplyFailureChecks() {
@@ -143,6 +146,206 @@ async function runReplyFailureChecks() {
     assert.equal(runtime.lastError, undefined)
   }
 
+}
+
+async function runDecirCommandChecks() {
+  const config = {
+    prefix: '!',
+    commandPermissions: {
+      help: ['streamer', 'moderator', 'vip', 'subscriber', 'viewer'],
+      tts: ['subscriber', 'vip', 'moderator', 'streamer'],
+      decir: ['subscriber', 'vip', 'moderator', 'streamer']
+    }
+  }
+
+  {
+    const runtime = {}
+    const sentMessages = []
+    const enqueued = []
+    const router = createRouter({
+      getConfig: async () => config,
+      updateRuntime: patch => Object.assign(runtime, patch),
+      sendChatMessage: async text => {
+        sentMessages.push(text)
+        return { ok: true, messageId: 'msg-1' }
+      },
+      enqueueMessage: message => enqueued.push(message),
+      setTtsVoicePreference: voice => voice
+    })
+
+    const result = await router.handleEvent({ username: 'ana', role: 'subscriber', content: '!decir hola mundo' })
+    assert.deepEqual(result, { handled: true, action: 'tts' })
+    assert.equal(sentMessages.length, 0)
+    assert.equal(enqueued.length, 1)
+    assert.equal(enqueued[0].text, 'ana dice: hola mundo')
+    assert.equal(enqueued[0].donor_name, 'ana')
+  }
+
+  {
+    const sentMessages = []
+    const router = createRouter({
+      getConfig: async () => config,
+      updateRuntime: patch => Object.assign({}, patch),
+      sendChatMessage: async text => {
+        sentMessages.push(text)
+        return { ok: true, messageId: 'msg-2' }
+      },
+      enqueueMessage: () => {},
+      setTtsVoicePreference: voice => voice
+    })
+
+    const result = await router.handleEvent({ username: 'ana', role: 'subscriber', content: '!decir' })
+    assert.deepEqual(result, { handled: true, error: 'missing text' })
+    assert.equal(sentMessages.at(-1), '❌ !tts <texto> | !elena hola para mudar voz')
+  }
+
+  {
+    const router = createRouter({
+      getConfig: async () => config,
+      updateRuntime: () => {},
+      sendChatMessage: async () => ({ ok: true, messageId: 'msg-3' }),
+      enqueueMessage: () => {},
+      setTtsVoicePreference: voice => voice
+    })
+
+    const deniedDecir = await router.handleEvent({ username: 'viewer1', role: 'viewer', content: '!decir hola' })
+    assert.deepEqual(deniedDecir, { handled: true, denied: true, action: 'decir' })
+
+    const deniedTts = await router.handleEvent({ username: 'viewer1', role: 'viewer', content: '!tts hola' })
+    assert.deepEqual(deniedTts, { handled: true, denied: true, action: 'tts' })
+  }
+
+  {
+    const enqueued = []
+    const router = createRouter({
+      getConfig: async () => config,
+      updateRuntime: () => {},
+      sendChatMessage: async () => ({ ok: true, messageId: 'msg-4' }),
+      enqueueMessage: message => enqueued.push(message),
+      setTtsVoicePreference: voice => voice
+    })
+
+    const result = await router.handleEvent({ username: 'ana', role: 'subscriber', content: '!tts hola mundo' })
+    assert.deepEqual(result, { handled: true, action: 'tts' })
+    assert.equal(enqueued.length, 1)
+    assert.equal(enqueued[0].text, 'hola mundo')
+  }
+
+  {
+    const replies = []
+    await helpHandler({
+      config,
+      reply: async text => {
+        replies.push(text)
+        return { ok: true }
+      }
+    })
+    assert.ok(replies.at(-1).includes('!decir <texto>'))
+  }
+}
+
+async function runKickChatSendModeChecks() {
+  const originalFetch = global.fetch
+  const originalWebSocket = global.WebSocket
+  const originalEnv = {
+    KICK_BOT_ENABLED: process.env.KICK_BOT_ENABLED,
+    KICK_BOT_CHANNEL: process.env.KICK_BOT_CHANNEL,
+    KICK_CHATROOM_ID: process.env.KICK_CHATROOM_ID,
+    KICK_BOT_BEARER: process.env.KICK_BOT_BEARER,
+    KICK_CHANNEL_ID: process.env.KICK_CHANNEL_ID
+  }
+
+  class FakeWebSocket {
+    constructor() {
+      this.readyState = 1
+      queueMicrotask(() => this.onopen?.())
+    }
+
+    send() {}
+    close() { this.onclose?.() }
+  }
+
+  try {
+    global.WebSocket = FakeWebSocket
+
+    {
+      const requests = []
+      global.fetch = async (_url, options) => {
+        requests.push(JSON.parse(options.body))
+        return { ok: true, status: 200, json: async () => ({ data: { message_id: 'msg-bot' } }) }
+      }
+
+      const runtime = {}
+      process.env.KICK_BOT_ENABLED = '1'
+      process.env.KICK_BOT_CHANNEL = 'demo'
+      process.env.KICK_CHATROOM_ID = '123'
+      process.env.KICK_BOT_BEARER = 'bot-token'
+      process.env.KICK_CHANNEL_ID = '5630412'
+
+      const runner = createKickBotRunner({
+        getKickBotConfig: () => ({ enabled: true, channel: 'demo', chatroomId: 123 }),
+        setKickBotConfig: () => {},
+        updateBotRuntime: patch => Object.assign(runtime, patch),
+        handleChatEvent: async () => {},
+        logger: { info() {}, warn() {}, error() {} }
+      })
+
+      const started = await runner.start()
+      assert.equal(started.started, true)
+
+      const result = await runner.sendChatMessage('hola bot')
+      assert.equal(result.ok, true)
+      assert.equal(requests.at(-1).type, 'bot')
+      assert.equal(requests.at(-1).broadcaster_user_id, 5630412)
+      await runner.stop()
+    }
+
+    {
+      const requests = []
+      global.fetch = async (_url, options) => {
+        requests.push(JSON.parse(options.body))
+        return { ok: true, status: 200, json: async () => ({ data: { message_id: 'msg-user' } }) }
+      }
+
+      const runtime = {}
+      process.env.KICK_BOT_ENABLED = '1'
+      process.env.KICK_BOT_CHANNEL = 'demo'
+      process.env.KICK_CHATROOM_ID = '123'
+      process.env.KICK_BOT_BEARER = 'bot-token'
+      process.env.KICK_CHANNEL_ID = '5630412'
+
+      const runner = createKickBotRunner({
+        getKickBotConfig: () => ({
+          enabled: true,
+          channel: 'demo',
+          chatroomId: 123,
+          customerAccessToken: 'customer-token',
+          customerBroadcasterId: '777'
+        }),
+        setKickBotConfig: () => {},
+        updateBotRuntime: patch => Object.assign(runtime, patch),
+        handleChatEvent: async () => {},
+        logger: { info() {}, warn() {}, error() {} }
+      })
+
+      const started = await runner.start()
+      assert.equal(started.started, true)
+
+      const result = await runner.sendChatMessage('hola user')
+      assert.equal(result.ok, true)
+      assert.equal(requests.at(-1).type, 'user')
+      assert.equal(requests.at(-1).broadcaster_user_id, 777)
+      await runner.stop()
+    }
+  } finally {
+    global.fetch = originalFetch
+    global.WebSocket = originalWebSocket
+    process.env.KICK_BOT_ENABLED = originalEnv.KICK_BOT_ENABLED
+    process.env.KICK_BOT_CHANNEL = originalEnv.KICK_BOT_CHANNEL
+    process.env.KICK_CHATROOM_ID = originalEnv.KICK_CHATROOM_ID
+    process.env.KICK_BOT_BEARER = originalEnv.KICK_BOT_BEARER
+    process.env.KICK_CHANNEL_ID = originalEnv.KICK_CHANNEL_ID
+  }
 }
 
 async function runRecoveryChecks() {
@@ -440,6 +643,8 @@ async function testSystemRoutes(baseUrl) {
   const botConfig = await fetch(`${baseUrl}/api/bot/config`).then(r => r.json())
   assert.ok(Object.prototype.hasOwnProperty.call(botConfig, 'enabled'))
   assert.equal(typeof botConfig.allowCommandsFromVip, 'boolean')
+  assert.ok(Array.isArray(botConfig.commandPermissions.decir))
+  assert.ok(botConfig.commandPermissions.decir.includes('subscriber'))
 
   const botSaved = await fetch(`${baseUrl}/api/bot/config`, {
     method: 'POST',

@@ -4,7 +4,7 @@
 
 import { helpHandler, helpextraHandler } from './help.js'
 import { statusHandler } from './status.js'
-import { ttsHandler } from './tts.js'
+import { ttsHandler, decirHandler } from './tts.js'
 import { voiceHandler } from './voice.js'
 import { voicesHandler } from './voices.js'
 import { queueHandler } from './queue.js'
@@ -22,13 +22,14 @@ import { lurkHandler } from './lurk.js'
 import { voiceHandlers } from './voices-quick.js'
 import { gatitoHandler, gatitoInfoHandler } from './cat.js'
 
-export { helpHandler, helpextraHandler, statusHandler, ttsHandler, voiceHandler, voicesHandler, queueHandler, skipHandler, replayHandler, deleteHandler, cancelHandler, restoreHandler, presetHandler, pokemonHandler, uptimeHandler, quoteHandler, randomquoteHandler, lurkHandler, voiceHandlers }
+export { helpHandler, helpextraHandler, statusHandler, ttsHandler, decirHandler, voiceHandler, voicesHandler, queueHandler, skipHandler, replayHandler, deleteHandler, cancelHandler, restoreHandler, presetHandler, pokemonHandler, uptimeHandler, quoteHandler, randomquoteHandler, lurkHandler, voiceHandlers }
 
 export const commandHandlers = {
   help: helpHandler,
   helpextra: helpextraHandler,
   status: statusHandler,
   tts: ttsHandler,
+  decir: decirHandler,
   voice: voiceHandler,
   voices: voicesHandler,
   queue: queueHandler,

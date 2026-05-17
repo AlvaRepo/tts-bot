@@ -74,6 +74,7 @@ const DEFAULT_BOT_CONFIG = {
     randomquote: ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
     lurk:    ['viewer', 'subscriber', 'vip', 'moderator', 'streamer'],
     tts:     ['subscriber', 'vip', 'moderator', 'streamer'],
+    decir:   ['subscriber', 'vip', 'moderator', 'streamer'],
     voice:   ['vip', 'moderator', 'streamer'],
     preset:  ['vip', 'moderator', 'streamer'],
     skip:    ['moderator', 'streamer'],
@@ -519,10 +520,17 @@ export function sanitizeKickBotConfig(value) {
   
   // Si NO existe commandPermissions pero existe estructura legacy, migrar automáticamente
   let commandPermissions = hasCommandPermissions ? input.commandPermissions : {}
-  
+
   if (!hasCommandPermissions) {
     // Migrar desde estructura legacy
     commandPermissions = migrateLegacyPermissions(input)
+  }
+
+  if (Array.isArray(commandPermissions.tts) && !Array.isArray(commandPermissions.decir)) {
+    commandPermissions = {
+      ...commandPermissions,
+      decir: [...commandPermissions.tts]
+    }
   }
   
   return {

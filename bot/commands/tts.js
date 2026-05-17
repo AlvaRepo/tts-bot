@@ -14,6 +14,33 @@ const VOICE_ALIASES = {
   jenny: 'en-US-JennyNeural'
 }
 
+function resolveTtsInput(fullText) {
+  const normalized = typeof fullText === 'string' ? fullText.trim() : ''
+  if (!normalized) return { voiceKey: null, textToSpeak: '' }
+
+  const firstWord = normalized.split(' ')[0].toLowerCase()
+  const voiceKey = VOICE_ALIASES[firstWord] ?? null
+
+  if (!voiceKey) {
+    return { voiceKey: null, textToSpeak: normalized }
+  }
+
+  return {
+    voiceKey,
+    textToSpeak: normalized.slice(firstWord.length).trim()
+  }
+}
+
+function enqueueTtsMessage({ enqueueMessage, event, textToSpeak, voice }) {
+  enqueueMessage({
+    source: 'command',
+    donor_name: event?.username ?? null,
+    amount: null,
+    text: textToSpeak,
+    voice
+  })
+}
+
 export async function ttsHandler({ parsed, event, enqueueMessage, reply, setTtsVoicePreference }) {
   const fullText = parsed.args.join(' ').trim()
   if (!fullText) {
@@ -21,20 +48,13 @@ export async function ttsHandler({ parsed, event, enqueueMessage, reply, setTtsV
     return { handled: true, error: 'missing text' }
   }
 
-  // Detectar si el primer argumento es un alias de voz
-  const firstWord = fullText.split(' ')[0].toLowerCase()
-  const voiceKey = VOICE_ALIASES[firstWord]
-  
-  let textToSpeak = fullText
+  const { voiceKey, textToSpeak } = resolveTtsInput(fullText)
   let voiceUsed = null
-  
+
   if (voiceKey) {
-    // Cambiar la voz según el alias
-    textToSpeak = fullText.slice(firstWord.length).trim()
     if (textToSpeak) {
       voiceUsed = setTtsVoicePreference(voiceKey)
     } else {
-      // Si solo puso el alias sin texto, solo cambiar la voz
       setTtsVoicePreference(voiceKey)
       await reply(`🎤 Voz: ${voiceKey}`)
       return { handled: true, action: 'voice', voice: voiceKey }
@@ -46,15 +66,35 @@ export async function ttsHandler({ parsed, event, enqueueMessage, reply, setTtsV
     return { handled: true, error: 'missing text' }
   }
 
-  // Agregar a la cola SIN enviar nada al chat
-  enqueueMessage({
-    source: 'command',
-    donor_name: event?.username ?? null,
-    amount: null,
-    text: textToSpeak,
-    voice: voiceUsed
-  })
+  enqueueTtsMessage({ enqueueMessage, event, textToSpeak, voice: voiceUsed })
 
-  // No responder al chat - solo reproducir el audio
+  return { handled: true, action: 'tts' }
+}
+
+export async function decirHandler({ parsed, event, enqueueMessage, reply, setTtsVoicePreference }) {
+  const fullText = parsed.args.join(' ').trim()
+  if (!fullText) {
+    await reply("❌ !tts <texto> | !elena hola para mudar voz")
+    return { handled: true, error: 'missing text' }
+  }
+
+  const { voiceKey, textToSpeak } = resolveTtsInput(fullText)
+  if (voiceKey) {
+    if (textToSpeak) {
+      setTtsVoicePreference(voiceKey)
+    } else {
+      setTtsVoicePreference(voiceKey)
+      await reply(`🎤 Voz: ${voiceKey}`)
+      return { handled: true, action: 'voice', voice: voiceKey }
+    }
+  }
+
+  const spokenText = `${event?.username ?? ''} dice: ${textToSpeak}`.trim()
+  if (!spokenText) {
+    await reply("❌ Escribe el texto a reproducir")
+    return { handled: true, error: 'missing text' }
+  }
+
+  enqueueTtsMessage({ enqueueMessage, event, textToSpeak: spokenText })
   return { handled: true, action: 'tts' }
 }
